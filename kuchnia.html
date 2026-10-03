@@ -1,3 +1,15 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Kuchnia">
+<meta name="theme-color" content="#E9EDEA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111814" media="(prefers-color-scheme: dark)">
+<style>:root{padding-top:env(safe-area-inset-top,0px)}</style>
 <title>Kuchnia i trening</title>
 <style>
 /* Kuchnia i trening — jedna kolumna na telefon, karty na zielonkawo-szarym tle; kolory dyscyplin jak w planie */
@@ -293,6 +305,8 @@ select.fIn{appearance:auto}
 .buyRow .buy{flex:1;min-width:0;margin-bottom:7px}
 @media (max-width:380px){.tstats b{font-size:18px}.more{padding-left:14px}}
 </style>
+</head>
+<body>
 
 <header>
   <div class="wrap">
@@ -430,7 +444,7 @@ async function migrateLocal(){
 }
 function storeLabel(){
   return backend==="db" ? "Dane zapisują się na Twoim koncie Claude. Ten sam stan widzisz na telefonie i na komputerze."
-    : backend==="local" ? "Dane zapisują się tylko w tej przeglądarce. Otwórz aplikację po zalogowaniu do Claude, żeby mieć je na każdym urządzeniu."
+    : backend==="local" ? (window.claude ? "Dane zapisują się tylko w tej przeglądarce. Otwórz aplikację po zalogowaniu do Claude, żeby mieć je na każdym urządzeniu." : "Dane zapisują się w tej przeglądarce, na tym telefonie.")
     : "Zapis nie działa w tym oknie. Dane znikną po zamknięciu.";
 }
 function blank(){return {meals:{sniadanie:[],obiad:[],kolacja:[],przekaska:[]}, water:0, train:null, weight:null}}
@@ -1800,3 +1814,5 @@ document.documentElement.lang="pl";
   </div>
   <div id="scResult"></div>
 </div>
+</body>
+</html>
