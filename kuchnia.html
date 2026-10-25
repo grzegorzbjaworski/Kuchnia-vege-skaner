@@ -1470,8 +1470,9 @@ function coErrText(e){
   if(c==="selection_required") return "Masz kilka connectorów „Garmin” — wybierz jeden w oknie, które pokazał Claude.";
   if(c==="not_granted"||c==="capability_disabled"||c==="capability_removed") return "Dane z Garmina nie są dostępne w tym oknie. Otwórz aplikację w Claude.";
   if(c==="tool_error") return "Serwer Garmin zgłosił błąd: "+String(e.message||"").slice(0,160);
-  if(c==="server_unavailable"||c==="upstream_error") return "Garmin chwilowo nie odpowiada.";
-  return "Nie udało się pobrać danych z Garmina.";
+  if(c==="server_unavailable"||c==="upstream_error") return "Garmin chwilowo nie odpowiada"+(e.message?" ("+String(e.message).slice(0,80)+")":"")+".";
+  if(c==="blocked_by_policy") return "Zapis do Garmina jest zablokowany przez ustawienia organizacji.";
+  return "Nie udało się połączyć z Garminem"+(c?" (kod: "+c+")":e&&e.message?" ("+String(e.message).slice(0,80)+")":"")+".";
 }
 async function gCall(tool,input,mode){
   // mode: "read" (bufor 2 min), "fresh" (wymuś pobranie), undefined = zapis
