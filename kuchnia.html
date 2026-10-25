@@ -404,6 +404,9 @@ input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:n
 .mealPrev{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:14px;background:var(--line-soft)}
 .addRow+.addRow{margin-top:8px}
 .addRow .add.alt{background:var(--surface);color:var(--muted);font-weight:600}
+.rated{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--green-soft);border-radius:12px;padding:10px 12px}
+.rated b{display:block;font-size:15px}
+.rated .linkish{white-space:nowrap;padding:8px 0}
 </style>
 </head>
 <body>
@@ -1569,7 +1572,7 @@ let meTab="prog", meFood=null;
 
 const CO={mcp:null, sample:null, ready:false, loading:false, at:0, err:null,
   wel:{}, acts:[], plan:[], prof:null, byDate:{}};
-let coTab="week", coWeek=null, coOpen=null, coSkip=null, coTrip=false, coBusy=false;
+let coTab="week", coWeek=null, coOpen=null, coSkip=null, coTrip=false, coBusy=false, coRateEdit=null;
 const SPORT_K=t=>/Run/.test(t)?"run":/Ride|Bike/.test(t)?"bike":/Swim/.test(t)?"swim":/Weight|Workout|Yoga|Pilates/.test(t)?"gym":"rest";
 const SPORT_N={run:"Bieg",bike:"Rower",swim:"Pływanie",gym:"Siła",rest:"Inne"};
 const RUN_T=/^(Run|TrailRun|VirtualRun)$/;
@@ -1727,7 +1730,7 @@ async function coRateSave(actId){
   if(rpe) input.rpe=+rpe.dataset.rpe; if(feel) input.feel=+feel.dataset.feel; if(cm) input.comment=cm;
   if(Object.keys(input).length===1){ toast("Wybierz wysiłek albo samopoczucie"); return; }
   coBusy=true;
-  try{ await gCall("rate_activity",input); coOpen=null; await afterWrite("Ocena zapisana — coach weźmie ją pod uwagę"); }
+  try{ await gCall("rate_activity",input); coOpen=null; coRateEdit=null; await afterWrite("Ocena zapisana — coach weźmie ją pod uwagę"); }
   catch(e){ toast(coErrText(e)); }
   coBusy=false; render();
 }
@@ -1772,8 +1775,22 @@ function planTable(ev,act){
     <span class="pl">Tempo</span><span>${/Z[12] HR/.test(ev.description||"")?"swobodne":"wg kroków"}</span><b>${act?paceTxt(act):"—"}</b>
   </div>`;
 }
+const FEEL_N=["","Świetnie","Dobrze","Normalnie","Słabo","Bardzo słabo"];
+const rated=a=>a.icu_rpe!=null||a.feel!=null;
+/* ocena: podsumowanie, gdy już zapisana; formularz po „Zmień ocenę” albo dla nieocenionego treningu */
+function ratePanel(a){
+  if(!rated(a)||coRateEdit===a.id) return rateBox(a);
+  const d=(a.start_date_local||"").slice(0,10);
+  const note=coDay(d).notes.find(n=>(n.name||"")==="Po treningu: "+(a.name||"trening"));
+  return `<div class="rated">
+    <div><span class="rl">Twoja ocena</span>
+      <b>${a.icu_rpe!=null?"Wysiłek "+a.icu_rpe+"/10":""}${a.icu_rpe!=null&&a.feel!=null?" · ":""}${a.feel!=null?FEEL_N[a.feel]:""}</b>
+      ${note&&note.description?`<span class="rs">${esc(note.description)}</span>`:""}</div>
+    <button class="linkish" data-rateedit="${esc(a.id)}">Zmień ocenę</button>
+  </div>`;
+}
 function rateBox(a){
-  const rp=a.icu_rpe, fe=a.feel, FEEL=["","Świetnie","Dobrze","Normalnie","Słabo","Bardzo słabo"];
+  const rp=a.icu_rpe, fe=a.feel, FEEL=FEEL_N;
   return `<div class="rate" id="rate-${esc(a.id)}">
     <div class="mvcap">Wysiłek (RPE 1 = bardzo lekko, 10 = maksymalnie)</div>
     <div class="rpeRow">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button data-rpe="${n}" aria-pressed="${rp===n}">${n}</button>`).join("")}</div>
@@ -1809,11 +1826,11 @@ function sesItem(d,it,showDay){
       <span class="spine" style="background:var(--${k})"></span>
       <button class="smain" data-coopen="${key}" aria-expanded="${open}">
         ${showDay?`<span class="sday">${DAYS[dowIdx(d)]}<br><span class="sdn">${d.slice(8)}</span></span>`:""}
-        <span class="swhat"><b>${esc(ev.name||SPORT_N[k])}</b>${a?`<span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}</span>`:""}</span>
+        <span class="swhat"><b>${esc(ev.name||SPORT_N[k])}</b>${a?`<span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}${a.icu_rpe!=null?" · RPE "+a.icu_rpe:""}</span>`:""}</span>
         <span class="samt num">${badge||(ev.moving_time?dur(ev.moving_time):"")}</span>
       </button>
     </div>
-    ${open?(a?`<div class="more">${planTable(ev,a)}${rateBox(a)}</div>`:state==="todo"?evActions(ev):`<div class="more">${ev.description?`<div class="desc">${esc(ev.description)}</div>`:""}</div>`):""}
+    ${open?(a?`<div class="more">${planTable(ev,a)}${ratePanel(a)}</div>`:state==="todo"?evActions(ev):`<div class="more">${ev.description?`<div class="desc">${esc(ev.description)}</div>`:""}</div>`):""}
   </li>`;
 }
 function extraItem(d,a,showDay){
@@ -1823,11 +1840,11 @@ function extraItem(d,a,showDay){
       <span class="spine" style="background:var(--${k})"></span>
       <button class="smain" data-coopen="${key}" aria-expanded="${open}">
         ${showDay?`<span class="sday">${DAYS[dowIdx(d)]}<br><span class="sdn">${d.slice(8)}</span></span>`:""}
-        <span class="swhat"><b>${esc(a.name||SPORT_N[k])}</b><span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}</span></span>
+        <span class="swhat"><b>${esc(a.name||SPORT_N[k])}</b><span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}${a.icu_rpe!=null?" · RPE "+a.icu_rpe:""}</span></span>
         <span class="samt"><span class="cTag">poza planem</span></span>
       </button>
     </div>
-    ${open?`<div class="more">${rateBox(a)}</div>`:""}
+    ${open?`<div class="more">${ratePanel(a)}</div>`:""}
   </li>`;
 }
 
@@ -2135,11 +2152,12 @@ async function chatSend(text){
 
 /* ---------- zdarzenia ---------- */
 main.addEventListener("click", async e=>{
-  const t=e.target.closest("[data-cotab],[data-coweek],[data-coopen],[data-comove],[data-colight],[data-coskip],[data-coskipok],[data-rpe],[data-feel],[data-ratesave],[data-corefresh],[data-gocoach],[data-cotrip],[data-tripsave],[data-chatsend],[data-chatstop],[data-chatq],[data-chatclear],[data-recipe]");
+  const t=e.target.closest("[data-cotab],[data-coweek],[data-coopen],[data-comove],[data-colight],[data-coskip],[data-coskipok],[data-rpe],[data-feel],[data-ratesave],[data-rateedit],[data-corefresh],[data-gocoach],[data-cotrip],[data-tripsave],[data-chatsend],[data-chatstop],[data-chatq],[data-chatclear],[data-recipe]");
   if(!t) return; const ds=t.dataset;
   if(ds.cotab){ coTab=ds.cotab; render(); if(coTab==="chat") chatPaint(); return; }
   if(ds.coweek){ coWeek=addDays(coWeek||monday(iso(new Date())),+ds.coweek); coOpen=null; render(); return; }
-  if(ds.coopen){ coOpen=coOpen===ds.coopen?null:ds.coopen; coSkip=null; render(); const b=main.querySelector(`[data-coopen="${ds.coopen}"]`); if(b) b.focus(); return; }
+  if(ds.rateedit){ coRateEdit=ds.rateedit; render(); return; }
+  if(ds.coopen){ coOpen=coOpen===ds.coopen?null:ds.coopen; coSkip=null; coRateEdit=null; render(); const b=main.querySelector(`[data-coopen="${ds.coopen}"]`); if(b) b.focus(); return; }
   if(ds.comove){ const [id,d]=ds.comove.split(":"); coAction("move",id,d); return; }
   if(ds.colight){ coAction("light",ds.colight); return; }
   if(ds.coskip){ coSkip=ds.coskip; render(); return; }
