@@ -407,6 +407,17 @@ input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:n
 .rated{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--green-soft);border-radius:12px;padding:10px 12px}
 .rated b{display:block;font-size:15px}
 .rated .linkish{white-space:nowrap;padding:8px 0}
+.mPhotos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mThumb{position:relative}
+.mThumb img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;background:var(--line-soft)}
+.mThumb .x{position:absolute;top:4px;right:4px;margin:0;background:rgba(0,0,0,.55);color:#fff;width:32px;height:32px}
+.mAdd{aspect-ratio:1;border:1.5px dashed var(--line);border-radius:12px;color:var(--green);font-weight:600;font-size:13.5px;background:var(--field)}
+.mItem{display:grid;grid-template-columns:minmax(0,1fr) 84px auto;gap:6px;align-items:center;padding:8px 0;border-top:1px solid var(--line-soft)}
+.mItem:first-child{border-top:0}
+.mItem .x{margin:0}
+.mMac{grid-column:1/-1;margin-top:-2px}
+.mTot{text-align:right;font-size:14px;padding-top:6px;border-top:1px solid var(--line)}
+.mTot b{font-size:18px}
 </style>
 </head>
 <body>
@@ -659,7 +670,7 @@ function viewDay(){
         <button class="add scan" data-scan="${sl}">Skanuj produkt</button>
       </div>
       <div class="addRow">
-        ${MEAL.img?`<button class="add alt" data-mealphoto="${sl}">Zdjęcie posiłku</button>`:""}
+        ${MEAL.img?`<button class="add alt" data-mealphoto="${sl}">Zdjęcia posiłku</button>`:""}
         <button class="add alt" data-quick="${sl}">Szybki wpis</button>
       </div>
     </div>`}).join("")}
@@ -1291,19 +1302,19 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;","
 
 /* ===================== POSIŁEK POZA DOMEM: zdjęcie i szybki wpis ===================== */
 /* Wpis trafia do dnia jako pozycja {q:{n,k,b,t,w},m:1} — tak jak wpisy ze starego dziennika */
-const MEAL={img:false, slot:null, file:null, est:null, busy:false, ctl:null};
+const MEAL={img:false, max:4, slot:null, files:[], items:null, busy:false, ctl:null};
 const QUICK=[["Pizza (cała)",1000,40,40,120],["Makaron w restauracji",850,30,30,110],["Burger z frytkami",1250,45,60,130],
   ["Risotto",800,20,30,110],["Ryba lub mięso z warzywami",600,45,30,25],["Śniadanie w hotelu",750,35,40,60],
   ["Kanapka ze sklepu",400,18,15,45],["Sałatka z kurczakiem",500,35,30,20],["Lody, 2 gałki",280,5,15,32],
   ["Kieliszek wina",120,0,0,4],["Piwo 0,5 l",220,2,0,18]];
 function mealInit(){
   if(!CO.sample || !CO.sample.limits) return;
-  CO.sample.limits().then(l=>{ MEAL.img=!!(l&&l.images); if(MEAL.img) coRender(); }).catch(()=>{});
+  CO.sample.limits().then(l=>{ MEAL.img=!!(l&&l.images); if(MEAL.img){ MEAL.max=Math.max(1,Math.min(6,l.images.maxCount||4)); coRender(); } }).catch(()=>{});
 }
 function mealFileInput(){
   let f=document.getElementById("mealFile");
-  if(!f){ f=document.createElement("input"); f.type="file"; f.accept="image/*"; f.id="mealFile"; f.hidden=true;
-    f.onchange=()=>{ const file=f.files&&f.files[0]; f.value=""; if(file) openMealPhoto(file); };
+  if(!f){ f=document.createElement("input"); f.type="file"; f.accept="image/*"; f.multiple=true; f.id="mealFile"; f.hidden=true;
+    f.onchange=()=>{ const files=[...(f.files||[])]; f.value=""; if(files.length) addMealPhotos(files); };
     document.body.appendChild(f); }
   return f;
 }
@@ -1356,37 +1367,87 @@ function openQuick(slot){
     [["qN",q[0]],["qK",q[1]],["qB",q[2]],["qT",q[3]],["qW",q[4]]].forEach(([id,v])=>document.getElementById(id).value=v); });
   quickFoot(slot);
 }
-function openMealPhoto(file){
-  const slot=MEAL.slot||"obiad"; MEAL.file=file; MEAL.est=null;
-  if(MEAL.url) URL.revokeObjectURL(MEAL.url); MEAL.url=URL.createObjectURL(file);
-  mealSheet("Zdjęcie posiłku · "+SLOTMAP[slot]);
-  shBody.innerHTML=`<img class="mealPrev" src="${MEAL.url}" alt="Zdjęcie posiłku">
+/* kilka zdjęć jednego posiłku (np. przystawka, danie, deser) → osobne pozycje do zatwierdzenia */
+function addMealPhotos(files){
+  const fresh=!sheet.classList.contains("on")||!document.getElementById("mPhotos");
+  if(fresh){ MEAL.files.forEach(x=>URL.revokeObjectURL(x.url)); MEAL.files=[]; }
+  const room=Math.max(0,MEAL.max-MEAL.files.length);
+  files.slice(0,room).forEach(file=>MEAL.files.push({file,url:URL.createObjectURL(file)}));
+  if(files.length>room) toast("Maksymalnie "+MEAL.max+" zdjęć na raz");
+  if(fresh) openMealPhoto(); else paintMealPhotos();
+}
+function paintMealPhotos(){
+  const box=document.getElementById("mPhotos"); if(!box) return;
+  box.innerHTML=MEAL.files.map((x,i)=>`<div class="mThumb"><img src="${x.url}" alt="Zdjęcie ${i+1}"><button class="x" data-mrm="${i}" aria-label="Usuń zdjęcie ${i+1}">✕</button></div>`).join("")
+    +(MEAL.files.length<MEAL.max?`<button class="mAdd" id="mMore">+ Dodaj zdjęcie</button>`:"");
+  box.querySelectorAll("[data-mrm]").forEach(b=>b.onclick=()=>{ const i=+b.dataset.mrm; URL.revokeObjectURL(MEAL.files[i].url); MEAL.files.splice(i,1); paintMealPhotos(); });
+  const more=document.getElementById("mMore"); if(more) more.onclick=()=>mealFileInput().click();
+  const go=document.getElementById("mGo"); if(go) go.disabled=!MEAL.files.length;
+}
+function openMealPhoto(){
+  const slot=MEAL.slot||"obiad"; MEAL.items=null;
+  mealSheet("Zdjęcia posiłku · "+SLOTMAP[slot]);
+  shBody.innerHTML=`<div class="mPhotos" id="mPhotos"></div>
+    <div class="setSub" style="margin-top:6px">Możesz dodać kilka zdjęć — np. przystawkę, danie i deser. To samo danie z dwóch stron Claude policzy raz.</div>
     <label class="fLab" for="mTxt">Dopisz, co to jest (opcjonalnie)</label>
-    <input class="fIn" id="mTxt" placeholder="np. carbonara, zjadłem ok. 3/4">
+    <input class="fIn" id="mTxt" placeholder="np. carbonara i tiramisu, makaron zjadłem w 3/4">
     <div id="mOut" role="status" aria-live="polite"></div>`;
   shFoot.innerHTML=`<button class="cta" id="mGo">Oszacuj kalorie</button>`;
   document.getElementById("mGo").onclick=()=>mealEstimate(slot);
+  paintMealPhotos();
+}
+function mealItemsHTML(){
+  const it=MEAL.items, tot=it.reduce((a,x)=>a+(+x.k||0),0);
+  return `<div class="mItems">${it.map((x,i)=>`<div class="mItem">
+      <input class="fIn" data-mi="${i}" data-mf="n" value="${esc(x.n)}" aria-label="Nazwa pozycji ${i+1}">
+      <input class="fIn num" data-mi="${i}" data-mf="k" inputmode="numeric" value="${x.k}" aria-label="kcal pozycji ${i+1}">
+      <button class="x" data-mdel="${i}" aria-label="Usuń pozycję ${i+1}">✕</button>
+      <div class="setSub mMac">B ${x.b} g · T ${x.t} g · W ${x.w} g</div></div>`).join("")}</div>
+    <div class="mTot">Razem <b class="num" id="mTotV">${tot}</b> kcal</div>`;
+}
+function mealItemsWire(slot){
+  const box=document.getElementById("mList");
+  box.oninput=e=>{ const t=e.target; if(t.dataset.mi==null) return; const x=MEAL.items[+t.dataset.mi];
+    if(t.dataset.mf==="n") x.n=t.value; else x.k=Math.max(0,Math.round(dec(t.value)));
+    document.getElementById("mTotV").textContent=MEAL.items.reduce((a,y)=>a+(+y.k||0),0); };
+  box.onclick=e=>{ const d=e.target.closest("[data-mdel]"); if(!d) return; MEAL.items.splice(+d.dataset.mdel,1);
+    box.innerHTML=mealItemsHTML(); mealItemsFoot(slot); };
+  mealItemsFoot(slot);
+}
+function mealItemsFoot(slot){
+  const n=MEAL.items.length;
+  shFoot.innerHTML=n?`<button class="cta" id="mSave">Dodaj do: ${SLOTMAP[slot]}${n>1?" ("+n+" pozycje)":""}</button>`:`<div class="empty">Brak pozycji do dodania.</div>`;
+  const b=document.getElementById("mSave"); if(b) b.onclick=()=>{
+    const ok=MEAL.items.filter(x=>String(x.n).trim()&&x.k>0);
+    if(!ok.length){ toast("Uzupełnij nazwę i kalorie"); return; }
+    ok.forEach(x=>day.meals[slot].push({q:{n:String(x.n).trim(),k:x.k,b:x.b,t:x.t,w:x.w},m:1}));
+    save(); closeSheet(); render(); toast(SLOTMAP[slot]+": dodano "+ok.reduce((a,x)=>a+x.k,0)+" kcal");
+  };
 }
 async function mealEstimate(slot){
-  if(MEAL.busy) return; MEAL.busy=true;
+  if(MEAL.busy||!MEAL.files.length) return; MEAL.busy=true;
   const out=document.getElementById("mOut"), go=document.getElementById("mGo"), txt=document.getElementById("mTxt").value.trim();
-  go.disabled=true; go.textContent="Claude ogląda zdjęcie…"; out.innerHTML="";
+  const n=MEAL.files.length;
+  go.disabled=true; go.textContent=n>1?"Claude ogląda zdjęcia…":"Claude ogląda zdjęcie…"; out.innerHTML="";
   MEAL.ctl=new AbortController();
   try{
-    const img=await mealJpeg(MEAL.file);
-    const r=await CO.sample.json(`Oszacuj wartości odżywcze posiłku ze zdjęcia (posiłek: ${SLOTMAP[slot]}).${txt?" Opis od jedzącego: "+txt+".":""}
+    const imgs=await Promise.all(MEAL.files.map(x=>mealJpeg(x.file)));
+    const r=await CO.sample.json(`Oszacuj wartości odżywcze posiłku (${SLOTMAP[slot]}) na podstawie ${n>1?n+" zdjęć":"zdjęcia"}.${txt?" Opis od jedzącego: "+txt+".":""}
+Na zdjęciach mogą być różne dania (np. przystawka, danie główne, deser, napój) albo to samo danie z kilku stron — każde danie policz dokładnie raz.
 To jedzenie z restauracji, hotelu albo gotowe — przyjmij typowe porcje restauracyjne i doliczaj ukryty tłuszcz (oliwa, masło, sosy, dressing). Jeśli opis mówi, że zjedzono część, policz tylko zjedzoną część.
 Odpowiedz wyłącznie jednym obiektem JSON:
-{"nazwa":"krótka polska nazwa dania","kcal":liczba,"bialko_g":liczba,"tluszcz_g":liczba,"wegle_g":liczba,"pewnosc":"niska|srednia|wysoka","uwagi":"jedno zdanie po polsku: co widać i jaką porcję przyjęto"}
-Jeśli na zdjęciu nie ma jedzenia: {"blad":"krótko po polsku, co jest nie tak"}.`,{images:[img],signal:MEAL.ctl.signal});
-    if(!r||r.blad||!(+r.kcal>0)){ out.innerHTML=`<div class="warn" style="margin-top:12px">${esc((r&&r.blad)||"Nie udało się rozpoznać posiłku. Dopisz, co to jest, albo użyj szybkiego wpisu.")}</div>`; go.disabled=false; go.textContent="Spróbuj ponownie"; MEAL.busy=false; return; }
+{"pozycje":[{"nazwa":"krótka polska nazwa","kcal":liczba,"bialko_g":liczba,"tluszcz_g":liczba,"wegle_g":liczba}],"pewnosc":"niska|srednia|wysoka","uwagi":"jedno zdanie po polsku: co widać i jakie porcje przyjęto"}
+Jeśli na zdjęciach nie ma jedzenia: {"blad":"krótko po polsku, co jest nie tak"}.`,{images:imgs,signal:MEAL.ctl.signal});
     const rnd=v=>Math.max(0,Math.round(+v||0));
+    const items=(r&&Array.isArray(r.pozycje)?r.pozycje:[]).map(x=>({n:x.nazwa||"Pozycja",k:rnd(x.kcal),b:rnd(x.bialko_g),t:rnd(x.tluszcz_g),w:rnd(x.wegle_g)})).filter(x=>x.k>0);
+    if(!r||r.blad||!items.length){ out.innerHTML=`<div class="warn" style="margin-top:12px">${esc((r&&r.blad)||"Nie udało się rozpoznać posiłku. Dopisz, co to jest, albo użyj szybkiego wpisu.")}</div>`; go.disabled=false; go.textContent="Spróbuj ponownie"; MEAL.busy=false; return; }
+    MEAL.items=items;
     out.innerHTML=`<div class="tip" style="margin-top:12px"><b>Szacunek Claude</b>${r.pewnosc?" · pewność: "+esc(({srednia:"średnia"})[r.pewnosc]||r.pewnosc):""}${r.uwagi?"<br>"+esc(r.uwagi):""}</div>
-      ${quickForm({n:r.nazwa||"Posiłek",k:rnd(r.kcal),b:rnd(r.bialko_g),t:rnd(r.tluszcz_g),w:rnd(r.wegle_g)})}`;
-    quickFoot(slot);
+      <div class="fLab">Pozycje — popraw nazwę lub kalorie, ✕ usuwa</div><div id="mList">${mealItemsHTML()}</div>`;
+    mealItemsWire(slot);
   }catch(e){
     const c=e&&e.code;
-    out.innerHTML=`<div class="warn" style="margin-top:12px">${c==="not_granted"?"Szacowanie potrzebuje Twojej zgody na wysłanie zdjęcia do Claude.":c==="images_unavailable"?"Ta wersja aplikacji Claude nie może wysyłać zdjęć — użyj szybkiego wpisu.":c==="image_rejected"?"Tego zdjęcia nie da się odczytać — spróbuj innego.":c==="rate_limited"?"Za dużo zapytań — spróbuj za chwilę.":c==="cancelled"?"Przerwano.":"Nie udało się oszacować — spróbuj ponownie albo użyj szybkiego wpisu."}</div>`;
+    out.innerHTML=`<div class="warn" style="margin-top:12px">${c==="not_granted"?"Szacowanie potrzebuje Twojej zgody na wysłanie zdjęć do Claude.":c==="images_unavailable"?"Ta wersja aplikacji Claude nie może wysyłać zdjęć — użyj szybkiego wpisu.":c==="image_rejected"?"Któregoś zdjęcia nie da się odczytać — usuń je albo dodaj inne.":c==="rate_limited"?"Za dużo zapytań — spróbuj za chwilę.":c==="cancelled"?"Przerwano.":"Nie udało się oszacować — spróbuj ponownie albo użyj szybkiego wpisu."}</div>`;
     go.disabled=false; go.textContent="Spróbuj ponownie";
   }
   MEAL.busy=false; MEAL.ctl=null;
