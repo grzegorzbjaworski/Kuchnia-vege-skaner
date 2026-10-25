@@ -397,6 +397,13 @@ select.fIn{appearance:auto}
 .coachNote a.linkish{text-decoration:none}
 .fGrid>div{min-width:0}
 input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:none;min-height:44px}
+.fGrid.four{grid-template-columns:repeat(4,minmax(0,1fr));gap:0 8px}
+.qPre{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.qPre .chip{font-size:13px;padding:7px 11px}
+.qPre .chip .num{color:var(--ink);font-weight:600;margin-left:3px}
+.mealPrev{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:14px;background:var(--line-soft)}
+.addRow+.addRow{margin-top:8px}
+.addRow .add.alt{background:var(--surface);color:var(--muted);font-weight:600}
 </style>
 </head>
 <body>
@@ -647,6 +654,10 @@ function viewDay(){
       <div class="addRow">
         <button class="add" data-add="${sl}">Wybierz przepis</button>
         <button class="add scan" data-scan="${sl}">Skanuj produkt</button>
+      </div>
+      <div class="addRow">
+        ${MEAL.img?`<button class="add alt" data-mealphoto="${sl}">Zdjęcie posiłku</button>`:""}
+        <button class="add alt" data-quick="${sl}">Szybki wpis</button>
       </div>
     </div>`}).join("")}
 
@@ -1274,6 +1285,114 @@ document.addEventListener("click",e=>{
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 
 
+
+/* ===================== POSIŁEK POZA DOMEM: zdjęcie i szybki wpis ===================== */
+/* Wpis trafia do dnia jako pozycja {q:{n,k,b,t,w},m:1} — tak jak wpisy ze starego dziennika */
+const MEAL={img:false, slot:null, file:null, est:null, busy:false, ctl:null};
+const QUICK=[["Pizza (cała)",1000,40,40,120],["Makaron w restauracji",850,30,30,110],["Burger z frytkami",1250,45,60,130],
+  ["Risotto",800,20,30,110],["Ryba lub mięso z warzywami",600,45,30,25],["Śniadanie w hotelu",750,35,40,60],
+  ["Kanapka ze sklepu",400,18,15,45],["Sałatka z kurczakiem",500,35,30,20],["Lody, 2 gałki",280,5,15,32],
+  ["Kieliszek wina",120,0,0,4],["Piwo 0,5 l",220,2,0,18]];
+function mealInit(){
+  if(!CO.sample || !CO.sample.limits) return;
+  CO.sample.limits().then(l=>{ MEAL.img=!!(l&&l.images); if(MEAL.img) coRender(); }).catch(()=>{});
+}
+function mealFileInput(){
+  let f=document.getElementById("mealFile");
+  if(!f){ f=document.createElement("input"); f.type="file"; f.accept="image/*"; f.id="mealFile"; f.hidden=true;
+    f.onchange=()=>{ const file=f.files&&f.files[0]; f.value=""; if(file) openMealPhoto(file); };
+    document.body.appendChild(f); }
+  return f;
+}
+/* zdjęcie z telefonu → JPEG max 1600 px (mniejsze, a HEIC i inne formaty też przejdą) */
+async function mealJpeg(file){
+  try{
+    const bm=await createImageBitmap(file), sc=Math.min(1,1600/Math.max(bm.width,bm.height));
+    const c=document.createElement("canvas"); c.width=Math.round(bm.width*sc); c.height=Math.round(bm.height*sc);
+    c.getContext("2d").drawImage(bm,0,0,c.width,c.height);
+    return await new Promise(r=>c.toBlob(b=>r(b||file),"image/jpeg",0.85));
+  }catch(e){ return file; }
+}
+function mealSheet(title){
+  pending=null; picker=null; shBody.oninput=null;
+  shImg.style.display="none"; shBack.style.display="none"; shMacro.innerHTML="";
+  shTitle.textContent=title; shFoot.className="sheetFoot";
+  scrim.classList.add("on"); sheet.classList.add("on"); shBody.scrollTop=0;
+}
+/* formularz wpisu: nazwa + kcal i makro, z gotowymi wartościami albo szacunkiem ze zdjęcia */
+function quickForm(v){
+  v=v||{};
+  return `<label class="fLab" for="qN">Nazwa</label>
+    <input class="fIn" id="qN" value="${esc(v.n||"")}" placeholder="np. Pizza margherita">
+    <div class="fGrid four">
+      <div><label class="fLab" for="qK">kcal</label><input class="fIn" id="qK" inputmode="numeric" value="${v.k??""}"></div>
+      <div><label class="fLab" for="qB">Białko</label><input class="fIn" id="qB" inputmode="numeric" value="${v.b??""}"></div>
+      <div><label class="fLab" for="qT">Tłuszcz</label><input class="fIn" id="qT" inputmode="numeric" value="${v.t??""}"></div>
+      <div><label class="fLab" for="qW">Węglow.</label><input class="fIn" id="qW" inputmode="numeric" value="${v.w??""}"></div>
+    </div>
+    <div class="setSub" style="margin-top:6px">Makro w gramach, opcjonalnie. W restauracji doliczaj ok. 20% na oliwę i sosy.</div>`;
+}
+function quickFoot(slot){
+  shFoot.innerHTML=`<button class="cta" id="qSave">Dodaj do: ${SLOTMAP[slot]}</button>`;
+  document.getElementById("qSave").onclick=()=>quickSave(slot);
+}
+function quickSave(slot){
+  const val=id=>document.getElementById(id).value, num=id=>Math.max(0,Math.round(dec(val(id))));
+  const n=val("qN").trim(), k=num("qK");
+  if(!n){ toast("Wpisz nazwę"); document.getElementById("qN").focus(); return; }
+  if(!(k>0)){ toast("Wpisz kalorie"); document.getElementById("qK").focus(); return; }
+  day.meals[slot].push({q:{n,k,b:num("qB"),t:num("qT"),w:num("qW")},m:1});
+  save(); closeSheet(); render(); toast(SLOTMAP[slot]+": dodano "+k+" kcal");
+}
+function openQuick(slot){
+  mealSheet("Szybki wpis · "+SLOTMAP[slot]);
+  shBody.innerHTML=`<div class="fLab" style="margin-top:0">Typowe dania poza domem</div>
+    <div class="qPre">${QUICK.map((q,i)=>`<button class="chip" data-qpre="${i}">${esc(q[0])} <span class="num">${q[1]}</span></button>`).join("")}</div>
+    ${quickForm()}`;
+  shBody.querySelectorAll("[data-qpre]").forEach(b=>b.onclick=()=>{ const q=QUICK[+b.dataset.qpre];
+    [["qN",q[0]],["qK",q[1]],["qB",q[2]],["qT",q[3]],["qW",q[4]]].forEach(([id,v])=>document.getElementById(id).value=v); });
+  quickFoot(slot);
+}
+function openMealPhoto(file){
+  const slot=MEAL.slot||"obiad"; MEAL.file=file; MEAL.est=null;
+  if(MEAL.url) URL.revokeObjectURL(MEAL.url); MEAL.url=URL.createObjectURL(file);
+  mealSheet("Zdjęcie posiłku · "+SLOTMAP[slot]);
+  shBody.innerHTML=`<img class="mealPrev" src="${MEAL.url}" alt="Zdjęcie posiłku">
+    <label class="fLab" for="mTxt">Dopisz, co to jest (opcjonalnie)</label>
+    <input class="fIn" id="mTxt" placeholder="np. carbonara, zjadłem ok. 3/4">
+    <div id="mOut" role="status" aria-live="polite"></div>`;
+  shFoot.innerHTML=`<button class="cta" id="mGo">Oszacuj kalorie</button>`;
+  document.getElementById("mGo").onclick=()=>mealEstimate(slot);
+}
+async function mealEstimate(slot){
+  if(MEAL.busy) return; MEAL.busy=true;
+  const out=document.getElementById("mOut"), go=document.getElementById("mGo"), txt=document.getElementById("mTxt").value.trim();
+  go.disabled=true; go.textContent="Claude ogląda zdjęcie…"; out.innerHTML="";
+  MEAL.ctl=new AbortController();
+  try{
+    const img=await mealJpeg(MEAL.file);
+    const r=await CO.sample.json(`Oszacuj wartości odżywcze posiłku ze zdjęcia (posiłek: ${SLOTMAP[slot]}).${txt?" Opis od jedzącego: "+txt+".":""}
+To jedzenie z restauracji, hotelu albo gotowe — przyjmij typowe porcje restauracyjne i doliczaj ukryty tłuszcz (oliwa, masło, sosy, dressing). Jeśli opis mówi, że zjedzono część, policz tylko zjedzoną część.
+Odpowiedz wyłącznie jednym obiektem JSON:
+{"nazwa":"krótka polska nazwa dania","kcal":liczba,"bialko_g":liczba,"tluszcz_g":liczba,"wegle_g":liczba,"pewnosc":"niska|srednia|wysoka","uwagi":"jedno zdanie po polsku: co widać i jaką porcję przyjęto"}
+Jeśli na zdjęciu nie ma jedzenia: {"blad":"krótko po polsku, co jest nie tak"}.`,{images:[img],signal:MEAL.ctl.signal});
+    if(!r||r.blad||!(+r.kcal>0)){ out.innerHTML=`<div class="warn" style="margin-top:12px">${esc((r&&r.blad)||"Nie udało się rozpoznać posiłku. Dopisz, co to jest, albo użyj szybkiego wpisu.")}</div>`; go.disabled=false; go.textContent="Spróbuj ponownie"; MEAL.busy=false; return; }
+    const rnd=v=>Math.max(0,Math.round(+v||0));
+    out.innerHTML=`<div class="tip" style="margin-top:12px"><b>Szacunek Claude</b>${r.pewnosc?" · pewność: "+esc(({srednia:"średnia"})[r.pewnosc]||r.pewnosc):""}${r.uwagi?"<br>"+esc(r.uwagi):""}</div>
+      ${quickForm({n:r.nazwa||"Posiłek",k:rnd(r.kcal),b:rnd(r.bialko_g),t:rnd(r.tluszcz_g),w:rnd(r.wegle_g)})}`;
+    quickFoot(slot);
+  }catch(e){
+    const c=e&&e.code;
+    out.innerHTML=`<div class="warn" style="margin-top:12px">${c==="not_granted"?"Szacowanie potrzebuje Twojej zgody na wysłanie zdjęcia do Claude.":c==="images_unavailable"?"Ta wersja aplikacji Claude nie może wysyłać zdjęć — użyj szybkiego wpisu.":c==="image_rejected"?"Tego zdjęcia nie da się odczytać — spróbuj innego.":c==="rate_limited"?"Za dużo zapytań — spróbuj za chwilę.":c==="cancelled"?"Przerwano.":"Nie udało się oszacować — spróbuj ponownie albo użyj szybkiego wpisu."}</div>`;
+    go.disabled=false; go.textContent="Spróbuj ponownie";
+  }
+  MEAL.busy=false; MEAL.ctl=null;
+}
+document.addEventListener("click", e=>{
+  const q=e.target.closest("[data-quick]"); if(q){ e.preventDefault(); openQuick(q.dataset.quick); return; }
+  const p=e.target.closest("[data-mealphoto]"); if(p){ e.preventDefault(); MEAL.slot=p.dataset.mealphoto; mealFileInput().click(); }
+});
+
 /* ===================== SKANER PRODUKTÓW ===================== */
 let scSlot=null, scStream=null, scZx=null, scZxOn=false, scCur=null;
 const scHasNative = 'BarcodeDetector' in window;
@@ -1484,6 +1603,7 @@ async function gCall(tool,input,mode){
 async function initCoach(){
   try{ CO.mcp = window.claude && await window.claude.use("mcp"); }catch(e){ CO.mcp=null; }
   try{ CO.sample = window.claude && await window.claude.use("sample"); }catch(e){ CO.sample=null; }
+  mealInit();
   if(!CO.mcp){ CO.err={code:"not_granted"}; coRender(); return; }
   loadCoach(false);
 }
