@@ -597,12 +597,12 @@ const thOf  = id => isOwn(id) ? C[id].th : TH[id];
 const kid   = v => /^c/.test(v) ? v : +v;
 const itemOf = (id,m) => isOwn(id) ? {c:id, m} : {id, m};
 const isOwnProd = k => /^u/.test(k);
-const isTrain = () => { if(day.train!=null) return day.train; const D=coDay(dateISO); return D.items.length>0||D.extra.length>0; };
+const isTrain = (d=dateISO, dd=day) => { if(dd&&dd.train!=null) return dd.train; const D=coDay(d); return D.items.length>0||D.extra.length>0; };
 /* kalorie spalone na treningach z Garmina tego dnia */
-const trainBurn = () => coDay(dateISO).acts.reduce((a,x)=>a+(x.calories||0),0);
+const trainBurn = (d=dateISO) => coDay(d).acts.reduce((a,x)=>a+(x.calories||0),0);
 /* w dzień z treningiem z zegarka cel = spoczynkowy + część spalonych kalorii (deficyt na wagę zostaje) */
-const trainPart = () => { if(!isTrain()) return 0; const b=trainBurn(); return b>0 ? Math.round(b*settings.burnPct/100) : settings.kcalTrain-settings.kcalRest; };
-const kcalGoal = () => settings.kcalRest + trainPart() + stepsPart();
+const trainPart = (d=dateISO, dd=day) => { if(!isTrain(d,dd)) return 0; const b=trainBurn(d); return b>0 ? Math.round(b*settings.burnPct/100) : settings.kcalTrain-settings.kcalRest; };
+const kcalGoal = (d=dateISO, dd=day) => settings.kcalRest + trainPart(d,dd) + stepsPart(d);
 
 /* ---------- energia metodą Respo: PPM (Mifflin) × aktywność − deficyt, korekta wg średniej wagi ---------- */
 const PAL = 1.4;                 // praca + ok. 8 tys. kroków; kroki ponad cel liczone osobno
@@ -626,7 +626,7 @@ function applyAuto(){
   const e=energy(); settings.kcalRest=e.rest; settings.kcalTrain=e.train; settings.protein=e.protein; settings.fat=e.fat;
 }
 /* węglowodany = reszta kalorii po białku i tłuszczu */
-const carbGoal = () => Math.max(0, Math.round((kcalGoal()-settings.protein*4-settings.fat*9)/4));
+const carbGoal = (d=dateISO, dd=day) => Math.max(0, Math.round((kcalGoal(d,dd)-settings.protein*4-settings.fat*9)/4));
 /* kroki ponad cel, bez kroków z biegów i spacerów zapisanych jako trening (te liczą się w treningu) */
 function extraSteps(d){
   const w=CO.wel[d]; if(!w||!w.steps) return 0;
@@ -634,7 +634,7 @@ function extraSteps(d){
   return Math.max(0, Math.round(w.steps-inActs-settings.steps));
 }
 /* ok. 0,5 kcal netto na kg na km marszu, ~1330 kroków na km; doliczamy ten sam % co z treningu */
-const stepsPart = () => Math.round(extraSteps(dateISO)*curWeight()*0.000375*settings.burnPct/100);
+const stepsPart = (d=dateISO) => Math.round(extraSteps(d)*curWeight()*0.000375*settings.burnPct/100);
 /* korekta co 2 tygodnie: tempo z porównania średnich tygodniowych (cel Respo: 0,5–1% masy ciała na tydzień) */
 function weightCheck(){
   const t=iso(new Date()), cur=wAvg(addDays(t,-6),t), prev=wAvg(addDays(t,-20),addDays(t,-14));
@@ -2247,7 +2247,7 @@ function viewRaces(){
 
 /* ---------- Coach: rozmowa z Claude, który może zmieniać plan ---------- */
 const CHAT={turns:[], busy:false, ctl:null, live:"", log:[], err:""};
-function chatContext(){
+async function chatContext(){
   const t=iso(new Date()), sp=(CO.prof&&CO.prof.sports)||[];
   const zones=sp.filter(s=>s.hr_zones).map(s=>({sporty:s.types.slice(0,3),strefy_hr_gorne_granice:s.hr_zones,lthr:s.lthr,max_hr:s.max_hr}));
   const plan=CO.plan.filter(e=>e.date>=addDays(t,-7)&&e.date<=addDays(t,21)).map(e=>({id:e.id,data:e.date,do:e.end_date,kat:e.category,typ:e.type,nazwa:e.name,czas:e.moving_time?dur(e.moving_time):undefined,wykonany:!!e.paired_activity_id||undefined,opis:e.category==="NOTE"?(e.description||"").slice(0,200):undefined}));
@@ -2265,6 +2265,9 @@ Strefy tętna (górne granice stref Z1..Z7): ${JSON.stringify(zones)}
 Plan (od tygodnia temu do 3 tygodni naprzód): ${JSON.stringify(plan)}
 Treningi z Garmina (14 dni): ${JSON.stringify(acts)}
 Regeneracja (7 dni): ${JSON.stringify(wel)}
+Jedzenie dziś (z dziennika w tej aplikacji; dzień jeszcze trwa): ${JSON.stringify(await foodFor(t))}
+Jedzenie ostatnie 6 dni (kcal zjedzone / cel, białko g; 0 = brak wpisów): ${JSON.stringify(await Promise.all([1,2,3,4,5,6].map(async i=>{const f=await foodFor(addDays(t,-i));return f.data.slice(5)+": "+f.zjedzone_kcal+"/"+f.cel_kcal+", B "+f.bialko_g.split(" ")[0];})))}
+Respo to metoda żywienia (dietetyk Michał Wrzosek, książka z przepisami), a nie osobna aplikacja — posiłki Grzegorz zapisuje w tej aplikacji (Personal Coach) i to je widzisz powyżej; po inne dni sięgnij narzędziem get_food. Gdy pyta o jedzenie, odnieś się konkretnie do tego, co już zjadł, i podpowiedz, co dojeść (zwłaszcza białko).
 Starty: ${JSON.stringify(races().map(r=>({data:r.date,kat:r.category,nazwa:r.name})))}`;
 }
 function chatTools(onWrite){
@@ -2280,6 +2283,11 @@ function chatTools(onWrite){
     T("update_event","Zmienia wydarzenie (np. nowy dzień, opis, czas). event_id z planu.",
       {event_id:{type:"number"},date:ds,sport:{type:"string"},name:{type:"string"},description:{type:"string"},duration_min:{type:"number"}},["event_id"],"update_event",true),
     T("delete_event","Usuwa wydarzenie z kalendarza i zegarka. event_id z planu.",{event_id:{type:"number"}},["event_id"],"delete_event",true),
+    {name:"get_food",description:"Jedzenie z dziennika w aplikacji w zakresie dat (maks. 31 dni): cel kcal, zjedzone, makro, posiłki.",
+      inputSchema:{type:"object",properties:{start_date:ds,end_date:ds},required:["start_date"]},
+      execute:async input=>{ const a=input.start_date, z=input.end_date||a, out=[];
+        if(!/^\d{4}-\d\d-\d\d$/.test(a)||!/^\d{4}-\d\d-\d\d$/.test(z)) throw new Error("Daty w formacie RRRR-MM-DD");
+        for(let d=a; d<=z && out.length<31; d=addDays(d,1)) out.push(await foodFor(d)); return out; }},
   ];
 }
 function viewChat(){
@@ -2292,7 +2300,7 @@ function viewChat(){
     ${CHAT.busy?`<button class="cta stop" data-chatstop="1">Stop</button>`:`<button class="cta" data-chatsend="1">Wyślij</button>`}
   </div>
   ${CHAT.turns.length&&!CHAT.busy?`<button class="link" data-chatclear="1">Nowa rozmowa</button>`:""}
-  <div class="note">Coach widzi Twój plan, treningi z ostatnich 2 tygodni i regenerację. Zmiany w planie od razu trafiają na zegarek.</div>`;
+  <div class="note">Coach widzi Twój plan, treningi z ostatnich 2 tygodni, regenerację i jedzenie z dziennika. Zmiany w planie od razu trafiają na zegarek.</div>`;
 }
 function chatLogHTML(){
   const msgs=CHAT.turns.map(t=>`<div class="msg ${t.role==="user"?"me":"co"}">${esc(t.content)}</div>`);
@@ -2311,13 +2319,13 @@ async function chatSend(text){
   const onWrite=(name,input)=>{ wrote=true;
     CHAT.log.push(name==="delete_event"?"🗑 Usunięto wydarzenie z planu":name==="plan_event"?"＋ Dodano: "+(input.name||"")+" ("+(input.date||"")+")":"↻ Zmieniono wydarzenie"+(input.date?" → "+input.date:"")); chatPaint(); };
   try{
-    const turns=[{role:"user",content:chatContext()},...CHAT.turns.slice(-12)];
+    const turns=[{role:"user",content:await chatContext()},...CHAT.turns.slice(-12)];
     const {text:ans}=await CO.sample(turns,{cache:false,signal:CHAT.ctl.signal,tools:chatTools(onWrite),onText:({text})=>{CHAT.live=text;chatPaint();}});
     CHAT.turns.push({role:"assistant",content:ans});
   }catch(e){
     if(e&&e.text) CHAT.turns.push({role:"assistant",content:e.text});
     if(e&&e.code==="tools_unavailable"){
-      try{ const {text:ans}=await CO.sample([{role:"user",content:chatContext()},...CHAT.turns.slice(-12)],{cache:false,onText:({text})=>{CHAT.live=text;chatPaint();}}); CHAT.turns.push({role:"assistant",content:ans}); CHAT.err="(Bez możliwości zmiany planu w tej wersji aplikacji.)"; }
+      try{ const {text:ans}=await CO.sample([{role:"user",content:await chatContext()},...CHAT.turns.slice(-12)],{cache:false,onText:({text})=>{CHAT.live=text;chatPaint();}}); CHAT.turns.push({role:"assistant",content:ans}); CHAT.err="(Bez możliwości zmiany planu w tej wersji aplikacji.)"; }
       catch(e2){ CHAT.err=sampleErr(e2&&e2.code); }
     } else if(!(e&&e.code==="cancelled")) CHAT.err=sampleErr(e&&e.code);
   }
@@ -2362,6 +2370,21 @@ function dayTotals(d){
   if(!d||!d.meals) return null;
   for(const [sl] of SLOTS) for(const it of (d.meals[sl]||[])){const rf=itemRef(it);if(rf){k+=rf.r.k*it.m;b+=rf.r.b*it.m}}
   return k?{k,b}:null;
+}
+/* jedzenie z dziennika dla coacha: cel dnia, zjedzone, makro i lista pozycji */
+async function foodFor(d){
+  const raw = d===dateISO ? day : await get("day:"+d);
+  const dd = raw ? {...blank(), ...raw, meals:{...blank().meals, ...(raw.meals||{})}} : blank();
+  let k=0,b=0,t=0,w=0; const meals={};
+  for(const [sl,lab] of SLOTS) for(const it of dd.meals[sl]){
+    const rf=itemRef(it); if(!rf) continue; const r=rf.r;
+    k+=r.k*it.m; b+=r.b*it.m; t+=r.t*it.m; w+=r.w*it.m;
+    (meals[lab]||(meals[lab]=[])).push(String(r.n||"pozycja").slice(0,60)+(it.m!==1?" ×"+String(+it.m.toFixed(2)).replace(".",","):"")+" · "+Math.round(r.k*it.m)+" kcal");
+  }
+  const goal=kcalGoal(d,dd);
+  return {data:d, cel_kcal:goal, w_tym_za_trening:trainPart(d,dd), w_tym_za_kroki:stepsPart(d), zjedzone_kcal:Math.round(k), zostalo_kcal:Math.round(goal-k),
+    bialko_g:Math.round(b)+" / "+settings.protein, tluszcz_g:Math.round(t)+" / "+settings.fat, wegle_g:Math.round(w)+" / "+carbGoal(d,dd),
+    posilki:Object.keys(meals).length?meals:"brak wpisów", waga:WEIGHTS[d]??undefined};
 }
 async function weekFood(mondayISO){
   const ds=weekDays(mondayISO), got=await Promise.all(ds.map(d=>get("day:"+d)));
