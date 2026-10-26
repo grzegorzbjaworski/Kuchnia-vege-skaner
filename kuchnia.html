@@ -1733,7 +1733,7 @@ function coErrText(e){
   if(c==="not_granted"||c==="capability_disabled"||c==="capability_removed") return "Dane z Garmina nie są dostępne w tym oknie. Otwórz aplikację w Claude.";
   if(c==="tool_error") return "Serwer Garmin zgłosił błąd: "+String(e.message||"").slice(0,160);
   if(c==="server_unavailable"||c==="upstream_error") return "Garmin chwilowo nie odpowiada"+(e.message?" ("+String(e.message).slice(0,80)+")":"")+".";
-  if(c==="blocked_by_policy") return "Zapis do Garmina jest zablokowany przez ustawienia organizacji.";
+  if(c==="blocked_by_policy") return "To narzędzie Garmina jest wyłączone. Włącz je w claude.ai → Ustawienia → Łączniki → Garmin.";
   return "Nie udało się połączyć z Garminem"+(c?" (kod: "+c+")":e&&e.message?" ("+String(e.message).slice(0,80)+")":"")+".";
 }
 async function gCall(tool,input,mode){
