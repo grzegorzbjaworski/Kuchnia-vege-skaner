@@ -1767,6 +1767,13 @@ async function syncWeights(){
     if(!WSYNC.warned){ WSYNC.warned=true; toast("Waga nie trafiła do intervals.icu — spróbuję ponownie. "+coErrText(e)); }
   }finally{ WSYNC.busy=false; }
 }
+/* dane z Garmina odświeżają się same: po powrocie do aplikacji i co 15 min, gdy jest otwarta (jeśli starsze niż 10 min) */
+function coAutoRefresh(){
+  if(document.visibilityState!=="visible" || !CO.mcp || CO.loading || !CO.at) return;
+  if(Date.now()-CO.at>10*60000) loadCoach(true);
+}
+document.addEventListener("visibilitychange", coAutoRefresh);
+setInterval(coAutoRefresh, 15*60000);
 async function initCoach(){
   try{ CO.mcp = window.claude && await window.claude.use("mcp"); }catch(e){ CO.mcp=null; }
   try{ CO.sample = window.claude && await window.claude.use("sample"); }catch(e){ CO.sample=null; }
