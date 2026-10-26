@@ -1263,7 +1263,7 @@ function wire(){
   const wIn=document.getElementById("wIn");
   if(wIn) wIn.onchange=()=>{ const v=dec(wIn.value); day.weight = v||null; save();
     if(v>=40&&v<=200) WEIGHTS[dateISO]=Math.round(v*10)/10; else delete WEIGHTS[dateISO];
-    set("weights",WEIGHTS); toast(v?"Waga zapisana":"Waga usunięta"); };
+    set("weights",WEIGHTS); syncWeights(); toast(v?"Waga zapisana":"Waga usunięta"); };
   const q=document.getElementById("q");
   if(q) q.oninput=()=>{query=q.value; renderList(listFor(filter, query))};
   main.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;render()});
@@ -1743,6 +1743,30 @@ async function gCall(tool,input,mode){
   const r = await CO.mcp.callTool(GSRV, tool, input||{}, opts);
   return r.payload;
 }
+/* pomiary wagi trafiają też do intervals.icu (dane dzienne), żeby coach w powiadomieniach widział trend;
+   "weights:synced" pamięta, co już wysłano — zaległe pomiary wysyłamy przy następnej okazji */
+const WSYNC={busy:false, again:false, warned:false};
+async function syncWeights(){
+  if(!CO.mcp) return;
+  if(WSYNC.busy){ WSYNC.again=true; return; }
+  WSYNC.busy=true;
+  try{
+    do{
+      WSYNC.again=false;
+      const done=(await get("weights:synced"))||{};
+      const dates=[...new Set([...Object.keys(WEIGHTS),...Object.keys(done)])].sort();
+      for(const d of dates){
+        const v=WEIGHTS[d]??null;
+        if((done[d]??null)===v) continue;
+        await gCall("set_weight",{date:d, weight_kg:v});
+        if(v==null) delete done[d]; else done[d]=v;
+        await set("weights:synced",done);
+      }
+    }while(WSYNC.again);
+  }catch(e){
+    if(!WSYNC.warned){ WSYNC.warned=true; toast("Waga nie trafiła do intervals.icu — spróbuję ponownie. "+coErrText(e)); }
+  }finally{ WSYNC.busy=false; }
+}
 async function initCoach(){
   try{ CO.mcp = window.claude && await window.claude.use("mcp"); }catch(e){ CO.mcp=null; }
   try{ CO.sample = window.claude && await window.claude.use("sample"); }catch(e){ CO.sample=null; }
@@ -1771,6 +1795,7 @@ async function loadCoach(fresh){
   CO.err = ok ? (bad?bad.reason:null) : (bad?bad.reason:{code:"upstream_error"});
   if(ok){ CO.ready=true; CO.at=Date.now(); indexCoach(); }
   CO.loading=false; coRender();
+  if(ok && !fresh) syncWeights();
 }
 async function afterWrite(msg){
   try{ await CO.mcp.invalidate(GSRV); }catch(e){}
@@ -2522,7 +2547,7 @@ main.addEventListener("click", async e=>{
   if(ds.me){ meTab=ds.me; if(meTab==="prog") meFood=await weekFood(monday(iso(new Date()))); render(); return; }
   if(ds.wsave){ const v=dec(document.getElementById("wNew").value);
     if(!(v>=40&&v<=200)){ toast("Podaj wagę w kg, np. 92,4"); return; }
-    WEIGHTS[iso(new Date())]=Math.round(v*10)/10; await set("weights",WEIGHTS); toast("Waga zapisana"); render(); return; }
+    WEIGHTS[iso(new Date())]=Math.round(v*10)/10; await set("weights",WEIGHTS); syncWeights(); toast("Waga zapisana"); render(); return; }
   if(ds.psave){
     const en={d:iso(new Date()), sleep:String(dec(document.getElementById("pSleep").value)||""), en:document.getElementById("pEnergy").value,
       diet:document.getElementById("pDiet").value, note:document.getElementById("pNote").value.trim()};
