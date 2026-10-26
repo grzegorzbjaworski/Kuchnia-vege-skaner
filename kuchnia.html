@@ -1835,6 +1835,9 @@ function indexCoach(){
     if(ev.paired_activity_id) act=CO.acts.find(a=>a.id===ev.paired_activity_id)||null;
     if(!act) act=D.acts.find(a=>!used.has(a.id)&&SPORT_K(a.type)===SPORT_K(ev.type))||null;
     if(act) used.add(act.id);
+    /* spacer w planie zalicza się też samymi krokami z zegarka (cel kroków osiągnięty) */
+    if(!act && /Walk|Hike/.test(ev.type||"")){ const w=CO.wel[ev.date];
+      if(w && w.steps>=(settings.steps||8000)) act={bySteps:true, steps:w.steps, moving_time:ev.moving_time||0}; }
     D.items.push({ev,act});
   });
   Object.values(by).forEach(D=>{ D.extra=D.acts.filter(a=>!used.has(a.id)&&a.type!=="Transition"); });
@@ -1992,17 +1995,17 @@ function sesItem(d,it,showDay){
   const ev=it.ev, a=it.act, k=SPORT_K(ev.type), key="e"+ev.id, open=coOpen===key;
   const today=iso(new Date()), past=d<today, opt=/^\(opcjonalnie\)/i.test(ev.name||"");
   const state=a?"done":past?(opt?"opt":"miss"):"todo";
-  const badge=a?`<span class="cTag ok">✓ ${comply(ev,a)}%</span>`:state==="miss"?`<span class="cTag miss">pominięty</span>`:state==="opt"?`<span class="cTag">nie zrobiony</span>`:"";
+  const badge=a&&a.bySteps?`<span class="cTag ok">✓ kroki</span>`:a?`<span class="cTag ok">✓ ${comply(ev,a)}%</span>`:state==="miss"?`<span class="cTag miss">pominięty</span>`:state==="opt"?`<span class="cTag">nie zrobiony</span>`:"";
   return `<li class="ses ${state}">
     <div class="srow">
       <span class="spine" style="background:var(--${k})"></span>
       <button class="smain" data-coopen="${key}" aria-expanded="${open}">
         ${showDay?`<span class="sday">${DAYS[dowIdx(d)]}<br><span class="sdn">${d.slice(8)}</span></span>`:""}
-        <span class="swhat"><b>${esc(ev.name||SPORT_N[k])}</b>${a?`<span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}${a.icu_rpe!=null?" · RPE "+a.icu_rpe:""}</span>`:""}</span>
+        <span class="swhat"><b>${esc(ev.name||SPORT_N[k])}</b>${a&&a.bySteps?`<span class="itemMeta num">${a.steps.toLocaleString("pl-PL")} kroków</span>`:a?`<span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}${a.icu_rpe!=null?" · RPE "+a.icu_rpe:""}</span>`:""}</span>
         <span class="samt num">${badge||(ev.moving_time?dur(ev.moving_time):"")}</span>
       </button>
     </div>
-    ${open?(a?`<div class="more">${planTable(ev,a)}${ratePanel(a)}</div>`:state==="todo"?evActions(ev):`<div class="more">${ev.description?`<div class="desc">${esc(ev.description)}</div>`:""}</div>`):""}
+    ${open?(a&&a.bySteps?`<div class="more"><div class="setSub">Zaliczony krokami: ${a.steps.toLocaleString("pl-PL")} z zegarka (cel ${(settings.steps||8000).toLocaleString("pl-PL")}).</div></div>`:a?`<div class="more">${planTable(ev,a)}${ratePanel(a)}</div>`:state==="todo"?evActions(ev):`<div class="more">${ev.description?`<div class="desc">${esc(ev.description)}</div>`:""}</div>`):""}
   </li>`;
 }
 function extraItem(d,a,showDay){
