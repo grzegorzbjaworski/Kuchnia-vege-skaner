@@ -419,6 +419,15 @@ input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:n
 .mTot{text-align:right;font-size:14px;padding-top:6px;border-top:1px solid var(--line)}
 .mTot b{font-size:18px}
 .tgl{width:24px;height:24px;accent-color:var(--green);flex:none}
+.mobRow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.mobBtn{flex:none;min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--green);color:var(--green);font-weight:650;font-size:14.5px;background:var(--surface)}
+.mobBtn[aria-pressed="true"]{background:var(--green);color:var(--on-green)}
+.mobDots{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:10px}
+.mobDots span{text-align:center;font-size:11.5px;font-weight:700;color:var(--muted);background:var(--line-soft);border-radius:8px;padding:5px 0}
+.mobDots span.on{background:var(--green-soft);color:var(--green)}
+.mobDots span.cur{outline:1.5px solid var(--green);outline-offset:-1.5px}
+.mobHow{margin-top:8px}
+.mobHow summary{cursor:pointer;color:var(--green);font-weight:600;font-size:13.5px;padding:6px 0;min-height:32px}
 </style>
 </head>
 <body>
@@ -670,6 +679,7 @@ function viewDay(){
   return `
   ${backend==="mem"?`<div class="warn">Zapis nie działa w tym oknie. Dane znikną po zamknięciu.</div>`:""}
   ${coachDayCard()}
+  ${mobCard()}
   <div class="hero">
     <div class="heroTop">
       <div>
@@ -739,6 +749,28 @@ function viewDay(){
   <div class="note">${storeLabel()}</div>`;
 }
 
+/* ---------- poranna mobilność: codzienny ptaszek, licznik tygodnia i seria ---------- */
+let MOB={};   // {"RRRR-MM-DD": 1}
+const MOB_HOW="Kot-krowa 1 min · wykrok na kolanie z rozciąganiem biodra 1 min/strona · biodra 90/90 1 min · pies z głową w dół + łydki 1 min · krążenia ramion i „anioły” przy ścianie 1 min · głęboki przysiad z oddechem 1 min · skłon do palców 1 min. Gdy masz więcej czasu — 20–30 min jogi.";
+function mobStats(d){
+  const m=monday(d), wk=weekDays(m), n=wk.filter(x=>MOB[x]).length;
+  let streak=0, x=MOB[d]?d:addDays(d,-1);
+  while(MOB[x]){ streak++; x=addDays(x,-1); }
+  return {wk, n, streak};
+}
+function mobCard(){
+  const today=iso(new Date()); if(dateISO>today) return "";
+  const on=!!MOB[dateISO], st=mobStats(dateISO), L=["P","W","Ś","C","P","S","N"];
+  return `<div class="slot mob">
+    <div class="mobRow">
+      <div style="min-width:0"><div class="slotName">Mobilność rano</div>
+        <div class="setSub">${st.n}/7 w tym tygodniu${st.n>=5?" · cel tygodnia ✓":" · cel 5"}${st.streak>1?" · seria "+st.streak+" dni":""}</div></div>
+      <button class="mobBtn" data-mob="1" aria-pressed="${on}">${on?"✓ Zrobione":"Zaznacz"}</button>
+    </div>
+    <div class="mobDots" aria-hidden="true">${st.wk.map((x,i)=>`<span class="${MOB[x]?"on":""} ${x===dateISO?"cur":""}">${L[i]}</span>`).join("")}</div>
+    <details class="mobHow"><summary>Co robić (10 min)</summary><div class="setSub">${MOB_HOW}</div></details>
+  </div>`;
+}
 function mac(lab,val,goal,cls=""){
   return `<div class="macro ${cls}">
     <div class="mv num">${val}<span style="font-size:12px;font-weight:400;color:var(--muted)"> g</span></div>
@@ -1260,6 +1292,9 @@ function wire(){
     const i=+b.dataset.glass, cur=Math.round(day.water/250);
     day.water = (i+1===cur ? i : i+1)*250; save(); render();
   });
+  const mb=main.querySelector("[data-mob]");
+  if(mb) mb.onclick=()=>{ if(MOB[dateISO]) delete MOB[dateISO]; else MOB[dateISO]=1; set("mobility",MOB);
+    const st=mobStats(dateISO); if(MOB[dateISO]) toast(st.n>=5?"Cel tygodnia zrobiony 💪":"Mobilność zaliczona · "+st.n+"/7"); render(); };
   const wIn=document.getElementById("wIn");
   if(wIn) wIn.onchange=()=>{ const v=dec(wIn.value); day.weight = v||null; save();
     if(v>=40&&v<=200) WEIGHTS[dateISO]=Math.round(v*10)/10; else delete WEIGHTS[dateISO];
@@ -2268,6 +2303,7 @@ Treningi z Garmina (14 dni): ${JSON.stringify(acts)}
 Regeneracja (7 dni): ${JSON.stringify(wel)}
 Jedzenie dziś (z dziennika w tej aplikacji; dzień jeszcze trwa): ${JSON.stringify(await foodFor(t))}
 Jedzenie ostatnie 6 dni (kcal zjedzone / cel, białko g; 0 = brak wpisów): ${JSON.stringify(await Promise.all([1,2,3,4,5,6].map(async i=>{const f=await foodFor(addDays(t,-i));return f.data.slice(5)+": "+f.zjedzone_kcal+"/"+f.cel_kcal+", B "+f.bialko_g.split(" ")[0];})))}
+Poranna mobilność (cel codziennie ok. 10 min, 5 dni w tygodniu to sukces): w tym tygodniu ${mobStats(t).n}/7, ostatnie 14 dni ${Array.from({length:14},(_,i)=>MOB[addDays(t,-i)]?1:0).reduce((a,b)=>a+b,0)}/14, seria ${mobStats(t).streak} dni.
 Respo to metoda żywienia (dietetyk Michał Wrzosek, książka z przepisami), a nie osobna aplikacja — posiłki Grzegorz zapisuje w tej aplikacji (Personal Coach) i to je widzisz powyżej; po inne dni sięgnij narzędziem get_food. Gdy pyta o jedzenie, odnieś się konkretnie do tego, co już zjadł, i podpowiedz, co dojeść (zwłaszcza białko).
 Starty: ${JSON.stringify(races().map(r=>({data:r.date,kat:r.category,nazwa:r.name})))}`;
 }
@@ -2627,8 +2663,8 @@ document.documentElement.lang="pl";
 (async()=>{
   main.innerHTML=`<div class="empty" style="padding:48px 4px;text-align:center">Wczytuję…</div>`;
   await initStore(); await migrateLocal();
-  const [p,cu,tr,ws,pg,sx] = await Promise.all(["products","custom","trening","weights","prog","shopExtra"].map(get));
-  P=p||{}; C=cu||{}; TR={done:{},moves:{},notes:{},...(tr||{})}; WEIGHTS=ws||{}; PROG=pg||[]; SHOPX=sx||[];
+  const [p,cu,tr,ws,pg,sx,mb] = await Promise.all(["products","custom","trening","weights","prog","shopExtra","mobility"].map(get));
+  P=p||{}; C=cu||{}; TR={done:{},moves:{},notes:{},...(tr||{})}; WEIGHTS=ws||{}; PROG=pg||[]; SHOPX=sx||[]; MOB=mb||{};
   QTH=ownThumb("+","u");
   await seedDziennik(); await seedPlan();
   await load();
