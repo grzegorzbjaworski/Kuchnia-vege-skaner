@@ -1748,6 +1748,8 @@ let meTab="prog", meFood=null;
 const CO={mcp:null, sample:null, ready:false, loading:false, at:0, err:null,
   wel:{}, acts:[], plan:[], prof:null, byDate:{}};
 let coTab="week", coWeek=null, coOpen=null, coSkip=null, coTrip=false, coBusy=false, coRateEdit=null;
+/* kadencja biegu w krokach na minutę (Garmin podaje obroty jednej nogi) */
+const spm=a=>a&&/Run/.test(a.type||"")&&a.average_cadence?Math.round(a.average_cadence*2):undefined;
 const SPORT_K=t=>/Run/.test(t)?"run":/Ride|Bike/.test(t)?"bike":/Swim/.test(t)?"swim":/Weight|Workout|Yoga|Pilates/.test(t)?"gym":"rest";
 const SPORT_N={run:"Bieg",bike:"Rower",swim:"Pływanie",gym:"Siła",rest:"Inne"};
 const RUN_T=/^(Run|TrailRun|VirtualRun)$/;
@@ -2036,7 +2038,7 @@ function sesItem(d,it,showDay){
       <span class="spine" style="background:var(--${k})"></span>
       <button class="smain" data-coopen="${key}" aria-expanded="${open}">
         ${showDay?`<span class="sday">${DAYS[dowIdx(d)]}<br><span class="sdn">${d.slice(8)}</span></span>`:""}
-        <span class="swhat"><b>${esc(ev.name||SPORT_N[k])}</b>${a&&a.bySteps?`<span class="itemMeta num">${a.steps.toLocaleString("pl-PL")} kroków</span>`:a?`<span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}${a.icu_rpe!=null?" · RPE "+a.icu_rpe:""}</span>`:""}</span>
+        <span class="swhat"><b>${esc(ev.name||SPORT_N[k])}</b>${a&&a.bySteps?`<span class="itemMeta num">${a.steps.toLocaleString("pl-PL")} kroków</span>`:a?`<span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}${spm(a)?" · "+spm(a)+" kr/min":""}${a.icu_rpe!=null?" · RPE "+a.icu_rpe:""}</span>`:""}</span>
         <span class="samt num">${badge||(ev.moving_time?dur(ev.moving_time):"")}</span>
       </button>
     </div>
@@ -2050,7 +2052,7 @@ function extraItem(d,a,showDay){
       <span class="spine" style="background:var(--${k})"></span>
       <button class="smain" data-coopen="${key}" aria-expanded="${open}">
         ${showDay?`<span class="sday">${DAYS[dowIdx(d)]}<br><span class="sdn">${d.slice(8)}</span></span>`:""}
-        <span class="swhat"><b>${esc(a.name||SPORT_N[k])}</b><span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}${a.icu_rpe!=null?" · RPE "+a.icu_rpe:""}</span></span>
+        <span class="swhat"><b>${esc(a.name||SPORT_N[k])}</b><span class="itemMeta num">${dur(a.moving_time)}${a.distance_km?" · "+nf(a.distance_km,1)+" km":""}${a.average_heartrate?" · "+a.average_heartrate+" bpm":""}${spm(a)?" · "+spm(a)+" kr/min":""}${a.icu_rpe!=null?" · RPE "+a.icu_rpe:""}</span></span>
         <span class="samt"><span class="cTag">poza planem</span></span>
       </button>
     </div>
@@ -2286,7 +2288,7 @@ async function chatContext(){
   const t=iso(new Date()), sp=(CO.prof&&CO.prof.sports)||[];
   const zones=sp.filter(s=>s.hr_zones).map(s=>({sporty:s.types.slice(0,3),strefy_hr_gorne_granice:s.hr_zones,lthr:s.lthr,max_hr:s.max_hr}));
   const plan=CO.plan.filter(e=>e.date>=addDays(t,-7)&&e.date<=addDays(t,21)).map(e=>({id:e.id,data:e.date,do:e.end_date,kat:e.category,typ:e.type,nazwa:e.name,czas:e.moving_time?dur(e.moving_time):undefined,wykonany:!!e.paired_activity_id||undefined,opis:e.category==="NOTE"?(e.description||"").slice(0,200):undefined}));
-  const acts=CO.acts.filter(a=>(a.start_date_local||"")>=addDays(t,-14)).map(a=>({data:a.start_date_local.slice(0,10),typ:a.type,nazwa:a.name,czas:dur(a.moving_time),km:a.distance_km,tetno:a.average_heartrate,obciazenie:a.icu_training_load,rpe:a.icu_rpe,samopoczucie:a.feel}));
+  const acts=CO.acts.filter(a=>(a.start_date_local||"")>=addDays(t,-14)).map(a=>({data:a.start_date_local.slice(0,10),typ:a.type,nazwa:a.name,czas:dur(a.moving_time),km:a.distance_km,tetno:a.average_heartrate,kadencja_kroki_min:spm(a),obciazenie:a.icu_training_load,rpe:a.icu_rpe,samopoczucie:a.feel}));
   const wel=Array.from({length:7},(_,i)=>CO.wel[addDays(t,-i)]).filter(Boolean).map(w=>({data:w.id,sen:w.sleepSecs?hm(w.sleepSecs):undefined,wynik_snu:w.sleepScore,hrv:w.hrv,tetno_spocz:w.restingHR,kroki:w.steps,forma:w.ctl&&Math.round(w.ctl),zmeczenie:w.atl&&Math.round(w.atl)}));
   const ws=Object.keys(WEIGHTS).sort(), lastW=ws.length?WEIGHTS[ws[ws.length-1]]:null;
   return `Jesteś osobistym trenerem (Personal Coach) Grzegorza. Odpowiadasz po polsku, krótko i konkretnie, jak trener w wiadomości — bez nagłówków i tabel, chyba że prosi o plan.
