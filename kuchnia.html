@@ -1594,23 +1594,47 @@ function openScanner(slot){
   // podpięcie przycisków okna (idempotentne)
   scEl("scX").onclick=closeScanner;
   scEl("scManual").onclick=()=>{
-    scEl("scMsg").innerHTML='<div class="scMsg i" style="display:flex;gap:8px"><input class="scI" id="scCode" inputmode="numeric" placeholder="Kod EAN" aria-label="Kod kreskowy" style="padding:8px"><button class="scGhost" id="scGo" style="padding:8px 14px">OK</button></div>';
-    const i=scEl("scCode"); i.focus(); scEl("scGo").onclick=()=>{ if(i.value){ stopCam(); lookup(i.value); } };
+    scEl("scMsg").innerHTML='<div class="scMsg i scRow"><input class="scI" id="scCode" inputmode="numeric" enterkeyhint="search" autocomplete="off" placeholder="Kod EAN, np. 5901234123457" aria-label="Kod kreskowy"><button class="scGhost" id="scGo">Szukaj</button></div>';
+    const i=scEl("scCode"), go=()=>{ const v=i.value.replace(/\D/g,""); if(v){ i.blur(); stopCam(); lookup(v); } };
+    i.focus(); scEl("scGo").onclick=go; i.onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } };
   };
   scEl("scFile").onchange=scPhoto;
   startCam();
+}
+/* zdjęcie z iPhone'a ma ~12 Mpx — zmniejszamy, próbujemy kilku skal, obrotu i środkowego pasa */
+function scLoadImg(file){
+  return new Promise((res,rej)=>{ const u=URL.createObjectURL(file), im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(u); res(im); }; im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error("img")); }; im.src=u; });
+}
+let scZxReader=null;
+function scZxDecode(cv){
+  if(!window.ZXing) return null;
+  if(!scZxReader){ const Z=ZXing, h=new Map();
+    h.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.EAN_13,Z.BarcodeFormat.EAN_8,Z.BarcodeFormat.UPC_A,Z.BarcodeFormat.UPC_E]);
+    h.set(Z.DecodeHintType.TRY_HARDER,true); scZxReader=new Z.MultiFormatReader(); scZxReader.setHints(h); }
+  try{ const Z=ZXing, bmp=new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(cv)));
+    return scZxReader.decode(bmp).getText(); }catch(e){ return null; }
+}
+async function scDecodeImage(im){
+  const W=im.naturalWidth||im.width, H=im.naturalHeight||im.height;
+  for(const max of [1400,1000,700]) for(const rot of [0,90]) for(const strip of [false,true]){
+    const sc=Math.min(1,max/Math.max(W,H)), w=Math.round(W*sc), h=Math.round(H*sc);
+    const cv=document.createElement("canvas"), cx=cv.getContext("2d",{willReadFrequently:true});
+    const rw=rot?h:w, rh=rot?w:h, sy=strip?Math.round(rh*0.3):0, sh=strip?Math.round(rh*0.4):rh;
+    cv.width=rw; cv.height=sh; cx.translate(rw/2,rh/2-sy); cx.rotate(rot*Math.PI/180); cx.drawImage(im,-w/2,-h/2,w,h);
+    if(scHasNative){ try{ const c=await scDetector.detect(cv); if(c.length) return c[0].rawValue; }catch(e){} }
+    const t=scZxDecode(cv); if(t) return t;
+  }
+  return null;
 }
 async function scPhoto(e){
   const file=e.target.files[0]; if(!file) return;
   scMsg("Odczytuję kod ze zdjęcia…");
   try{
-    if(scHasNative){ const bmp=await createImageBitmap(file); const c=await scDetector.detect(bmp);
-      if(c.length){ scMsg(""); stopCam(); lookup(c[0].rawValue); e.target.value=""; return; } }
-    if(window.ZXing){ const url=URL.createObjectURL(file); const rd=new ZXing.BrowserMultiFormatReader();
-      const res=await rd.decodeFromImageUrl(url); URL.revokeObjectURL(url);
-      if(res){ scMsg(""); stopCam(); lookup(res.getText()); e.target.value=""; return; } }
-    scMsg("Nie odczytano kodu. Spróbuj z bliska lub wpisz ręcznie.","e");
-  }catch(err){ scMsg("Nie odczytano kodu. Spróbuj ostrzej lub wpisz ręcznie.","e"); }
+    const code=await scDecodeImage(await scLoadImg(file));
+    if(code){ scMsg(""); stopCam(); lookup(code); e.target.value=""; return; }
+    scMsg(!scHasNative&&!window.ZXing?"Czytnik kodów się nie załadował — wpisz kod ręcznie (cyfry pod kreskami).":"Nie odczytano kodu. Zrób zdjęcie z bliska, ostro, cały kod w kadrze — albo wpisz cyfry.","e");
+  }catch(err){ scMsg("Nie udało się otworzyć zdjęcia. Wpisz kod ręcznie.","e"); }
   e.target.value="";
 }
 async function startCam(){
@@ -1621,7 +1645,7 @@ async function startCam(){
       const v=scEl("scVideo"); v.srcObject=scStream; await v.play(); scanLoop(); watchCam();
     }else if(window.ZXing){
       scZx=new ZXing.BrowserMultiFormatReader(); scZxOn=true;
-      scZx.decodeFromVideoDevice(null,'scVideo',(res)=>{ if(res&&scZxOn){ scZxOn=false; onCode(res.getText()); }});
+      Promise.resolve(scZx.decodeFromVideoDevice(null,'scVideo',(res)=>{ if(res&&scZxOn){ scZxOn=false; onCode(res.getText()); }})).catch(()=>{ scEl("scBanner").style.display="block"; });
       watchCam();
     }else{ scEl("scBanner").style.display="block"; }
   }catch(e){ scEl("scBanner").style.display="block"; }
@@ -1643,15 +1667,26 @@ function closeScanner(){ stopCam(); scEl("scModal").classList.remove("on"); scSl
 function onCode(code){ stopCam(); lookup(code); }
 
 const scNum = v => (v===0||v)&&!isNaN(+v) ? +v : null;
+/* Open Food Facts: najpierw bezpośrednio, a gdy okno Claude blokuje połączenie — przez serwer (narzędzie lookup_product) */
+async function offFetch(code){
+  try{
+    const ctl=new AbortController(), tm=setTimeout(()=>ctl.abort(),6000);
+    const u=`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,product_name_pl,product_name_de,brands,nutriments,serving_quantity`;
+    const r=await fetch(u,{signal:ctl.signal}); clearTimeout(tm);
+    if(r.ok||r.status===404) return await r.json();
+  }catch(e){}
+  if(!CO.mcp) throw new Error("offline");
+  const p=await gCall("lookup_product",{code},"read");
+  return p&&p.found ? {status:1, product:p.product} : {status:0};
+}
 async function lookup(code){
   code=(code||"").trim();
   if(!/^\d{6,14}$/.test(code)){ scMsg("Nieprawidłowy kod.","e"); return; }
   if(P[code]){ showResult(code,P[code],false); return; }
   scMsg("Szukam produktu…");
   try{
-    const u=`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,product_name_pl,product_name_de,brands,nutriments,serving_quantity`;
-    const d=await (await fetch(u)).json();
-    if(d.status!==1||!d.product){ scMsg(""); manualEntry(code); return; }
+    const d=await offFetch(code);
+    if(d.status!==1||!d.product){ scMsg("Nie ma tego produktu w bazie — wpisz dane z etykiety."); manualEntry(code); return; }
     const n=d.product.nutriments||{};
     let kcal=scNum(n['energy-kcal_100g']); if(kcal==null&&scNum(n['energy_100g'])!=null) kcal=scNum(n['energy_100g'])/4.184;
     const prod={ n:d.product.product_name_pl||d.product.product_name||d.product.product_name_de||("Produkt "+code),
@@ -2713,6 +2748,9 @@ document.documentElement.lang="pl";
 .scL{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;display:block;margin:8px 0 4px}
 .scI{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
 .scI:focus{outline:2px solid var(--green);border-color:var(--green)}
+.scRow{display:flex;gap:8px;align-items:stretch;padding:8px}
+.scRow .scI{flex:1;min-width:0;font-size:16px;padding:10px 12px}
+.scRow .scGhost{flex:none;padding:10px 14px;font-size:15px}
 .scGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .scCalc{background:var(--green);color:var(--on-green);border-radius:12px;padding:14px;text-align:center;font-size:22px;font-weight:700;margin:14px 0}
 .scCalc span{font-size:13px;font-weight:400;opacity:.9}
