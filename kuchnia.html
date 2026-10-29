@@ -419,6 +419,10 @@ input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:n
 .mTot{text-align:right;font-size:14px;padding-top:6px;border-top:1px solid var(--line)}
 .mTot b{font-size:18px}
 .tgl{width:24px;height:24px;accent-color:var(--green);flex:none}
+.repRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:8px 0;border-top:1px solid var(--line-soft);font-size:14.5px;align-items:baseline}
+.repRow b{font-size:15.5px}
+.repSub{grid-column:1/-1;font-size:12.5px;color:var(--muted)}
+.rep .arw:disabled{opacity:.35}
 .mobRow{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .mobBtn{flex:none;min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--green);color:var(--green);font-weight:650;font-size:14.5px;background:var(--surface)}
 .mobBtn[aria-pressed="true"]{background:var(--green);color:var(--on-green)}
@@ -1389,7 +1393,7 @@ async function go(t){
   tab=t; if(tab!=="recipes") pendingSlot=null;
   if(tab==="shop") await loadWeek();
   if(tab==="train") loadCoach(false);
-  if(tab==="me" && meTab==="prog") meFood=await weekFood(monday(iso(new Date())));
+  if(tab==="me" && meTab==="prog"){ meFood=await weekFood(monday(iso(new Date()))); REP=await buildReport(repOff); }
   document.querySelectorAll("nav [data-tab]").forEach(x=>x.setAttribute("aria-current", x.dataset.tab===tab));
   render(); window.scrollTo(0,0);
 }
@@ -1593,13 +1597,21 @@ function openScanner(slot){
   scEl("scModal").classList.add("on");
   // podpięcie przycisków okna (idempotentne)
   scEl("scX").onclick=closeScanner;
-  scEl("scManual").onclick=()=>{
-    scEl("scMsg").innerHTML='<div class="scMsg i scRow"><input class="scI" id="scCode" inputmode="numeric" enterkeyhint="search" autocomplete="off" placeholder="Kod EAN, np. 5901234123457" aria-label="Kod kreskowy"><button class="scGhost" id="scGo">Szukaj</button></div>';
-    const i=scEl("scCode"), go=()=>{ const v=i.value.replace(/\D/g,""); if(v){ i.blur(); stopCam(); lookup(v); } };
-    i.focus(); scEl("scGo").onclick=go; i.onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } };
-  };
+  scEl("scManual").onclick=()=>scManualShow(true);
   scEl("scFile").onchange=scPhoto;
   startCam();
+}
+/* pole na ręczny kod; w trybie bez podglądu pokazujemy je od razu (bez klawiatury) */
+function scManualShow(focus){
+    scEl("scMsg").innerHTML='<div class="scMsg i scRow"><input class="scI" id="scCode" inputmode="numeric" enterkeyhint="search" autocomplete="off" placeholder="Kod EAN, np. 5901234123457" aria-label="Kod kreskowy"><button class="scGhost" id="scGo">Szukaj</button></div>';
+    const i=scEl("scCode"), go=()=>{ const v=i.value.replace(/\D/g,""); if(v){ i.blur(); stopCam(); lookup(v); } };
+    if(focus) i.focus(); scEl("scGo").onclick=go; i.onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } };
+}
+/* okno Claude nie daje podglądu kamery: zamiast czarnego ekranu duży przycisk zdjęcia i pole na kod */
+function scNoCam(){
+  const m=scEl("scModal"); if(m.classList.contains("noCam")) return;
+  m.classList.add("noCam"); scEl("scBanner").style.display="block";
+  if(!scEl("scCode")) scManualShow(false);
 }
 /* zdjęcie z iPhone'a ma ~12 Mpx — zmniejszamy, próbujemy kilku skal, obrotu i środkowego pasa */
 function scLoadImg(file){
@@ -1638,17 +1650,17 @@ async function scPhoto(e){
   e.target.value="";
 }
 async function startCam(){
-  scEl("scBanner").style.display="none";
+  scEl("scBanner").style.display="none"; scEl("scModal").classList.remove("noCam");
   try{
     if(scHasNative){
       scStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
       const v=scEl("scVideo"); v.srcObject=scStream; await v.play(); scanLoop(); watchCam();
     }else if(window.ZXing){
       scZx=new ZXing.BrowserMultiFormatReader(); scZxOn=true;
-      Promise.resolve(scZx.decodeFromVideoDevice(null,'scVideo',(res)=>{ if(res&&scZxOn){ scZxOn=false; onCode(res.getText()); }})).catch(()=>{ scEl("scBanner").style.display="block"; });
+      Promise.resolve(scZx.decodeFromVideoDevice(null,'scVideo',(res)=>{ if(res&&scZxOn){ scZxOn=false; onCode(res.getText()); }})).catch(()=>scNoCam());
       watchCam();
-    }else{ scEl("scBanner").style.display="block"; }
-  }catch(e){ scEl("scBanner").style.display="block"; }
+    }else{ scNoCam(); }
+  }catch(e){ scNoCam(); }
 }
 async function scanLoop(){
   if(!scEl("scModal").classList.contains("on")) return;
@@ -1657,7 +1669,7 @@ async function scanLoop(){
   requestAnimationFrame(scanLoop);
 }
 function watchCam(){ setTimeout(()=>{ const v=scEl("scVideo");
-  if(scEl("scModal").classList.contains("on") && scEl("scCam").style.display!=="none" && (!v.videoWidth)) scEl("scBanner").style.display="block";
+  if(scEl("scModal").classList.contains("on") && scEl("scCam").style.display!=="none" && (!v.videoWidth)) scNoCam();
 }, 3500); }
 function stopCam(){
   if(scStream){ scStream.getTracks().forEach(t=>t.stop()); scStream=null; }
@@ -1778,7 +1790,7 @@ const dayDiff=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00")
 const dm=s=>{const p=s.split("-");return p[2]+"."+p[1]};
 const dowIdx=s=>(new Date(s+"T12:00:00").getDay()+6)%7;
 let TR={done:{},moves:{},notes:{}}, WEIGHTS={}, PROG=[], SHOPX=[];
-let meTab="prog", meFood=null;
+let meTab="prog", meFood=null, repOff=0, REP=null;
 
 const CO={mcp:null, sample:null, ready:false, loading:false, at:0, err:null,
   wel:{}, acts:[], plan:[], prof:null, byDate:{}};
@@ -2497,6 +2509,60 @@ function adjBox(){
     :(c.state==="slow"||c.state==="fast")?`<span class="setSub">Zmień kalorie w Ustawieniach.</span>`:"";
   return `<div class="coachNote" style="margin:10px 0 4px"><span><b>Korekta co 2 tygodnie.</b> ${head} ${msg}</span>${btn}</div>`;
 }
+/* ---------- raport tygodnia: treningi, bieganie, kroki, sen, jedzenie, waga, mobilność ---------- */
+const mmss=s=>Math.floor(s/60)+":"+p2(Math.round(s%60));
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+async function buildReport(off){
+  const today=iso(new Date()), mon=addDays(monday(today),7*off), all=weekDays(mon), days=all.filter(d=>d<=today);
+  const r={mon, sun:all[6], days:days.length};
+  if(CO.ready){
+    let kp=0,kd=0,od=0,ex=0;
+    days.forEach(d=>{ const D=coDay(d);
+      D.items.forEach(({ev,act})=>{ const opt=/^\(opcjonalnie\)/i.test(ev.name||""); if(opt){ if(act) od++; } else { kp++; if(act) kd++; } });
+      ex+=D.extra.length; });
+    // kluczowe zaplanowane na resztę tygodnia też liczą się do „z ilu”
+    all.filter(d=>d>today).forEach(d=>coDay(d).items.forEach(({ev})=>{ if(!/^\(opcjonalnie\)/i.test(ev.name||"")) kp++; }));
+    r.key={done:kd, plan:kp, opt:od, extra:ex};
+    r.sum=coWeekData(mon).sum;
+    const runs=CO.acts.filter(a=>RUN_T.test(a.type||"")&&(a.start_date_local||"").slice(0,10)>=mon&&(a.start_date_local||"").slice(0,10)<=all[6]);
+    const rt=runs.reduce((x,a)=>x+(a.moving_time||0),0), cad=runs.filter(a=>a.average_cadence);
+    r.run={n:runs.length, min:Math.round(rt/60), km:runs.reduce((x,a)=>x+(a.distance_km||0),0),
+      spm:cad.length?Math.round(cad.reduce((x,a)=>x+a.average_cadence*2*(a.moving_time||0),0)/cad.reduce((x,a)=>x+(a.moving_time||0),0)):null,
+      p140:avg(pace140().filter(p=>p.d>=mon&&p.d<=all[6]).map(p=>p.s))};
+    const W=days.map(d=>CO.wel[d]).filter(Boolean), goal=settings.steps||8000, st=W.filter(w=>w.steps!=null);
+    r.steps={avg:avg(st.map(w=>w.steps)), ok:st.filter(w=>w.steps>=goal).length, n:st.length};
+    r.sleep=avg(W.filter(w=>w.sleepSecs).map(w=>w.sleepSecs)); r.hrv=avg(W.filter(w=>w.hrv).map(w=>w.hrv));
+  }
+  const F=(await Promise.all(days.map(foodFor))).filter(f=>f.zjedzone_kcal>0);
+  r.food={n:F.length, k:avg(F.map(f=>f.zjedzone_kcal)), goal:avg(F.map(f=>f.cel_kcal)), b:avg(F.map(f=>+f.bialko_g.split(" ")[0]))};
+  const w1=wAvg(mon,all[6]), w0=wAvg(addDays(mon,-7),addDays(mon,-1));
+  r.w={now:w1&&w1.v, n:w1?w1.n:0, prev:w0&&w0.v};
+  r.mob=all.filter(d=>MOB[d]).length;
+  return r;
+}
+function reportCard(){
+  const r=REP; if(!r) return "";
+  const row=(l,v,sub)=>`<div class="repRow"><span>${l}</span><b class="num">${v}</b>${sub?`<span class="repSub">${sub}</span>`:""}</div>`;
+  const KN={run:"bieg",bike:"rower",swim:"basen",gym:"siła",rest:"spacer/inne"};
+  const sports=r.sum?Object.entries(r.sum).filter(([,x])=>x.d>0).map(([k,x])=>KN[k]+" "+dur(x.d)).join(" · "):"";
+  const head=r.mon===monday(iso(new Date()))?"Ten tydzień":dm(r.mon)+"–"+dm(r.sun);
+  return `<div class="slot rep">
+    <div class="wkNav" style="padding:0 0 6px">
+      <button class="arw" data-repw="-1" aria-label="Poprzedni tydzień">‹</button>
+      <div class="t"><div class="tt">Raport · ${head}</div><div class="ts">${dm(r.mon)}–${dm(r.sun)}${r.days<7?" · trwa":""}</div></div>
+      <button class="arw" data-repw="1" aria-label="Następny tydzień" ${repOff>=0?"disabled":""}>›</button>
+    </div>
+    ${r.key&&!r.key.plan?row("Treningi",String(r.key.opt+r.key.extra),"bez zaplanowanych kluczowych"):""}
+    ${r.key&&r.key.plan?row("Kluczowe treningi",r.key.done+" / "+r.key.plan,[r.key.opt?"+"+r.key.opt+" opcjonalne":"",r.key.extra?"+"+r.key.extra+" poza planem":""].filter(Boolean).join(" · ")):""}
+    ${sports?row("Czas treningu",dur(Object.values(r.sum).reduce((x,y)=>x+y.d,0)),sports):""}
+    ${r.run&&r.run.n?row("Bieganie",r.run.min+" min · "+nf(r.run.km,1)+" km",[r.run.spm?"kadencja "+r.run.spm+" kr/min":"",r.run.p140?"tempo przy tętnie 140: "+mmss(r.run.p140)+"/km":""].filter(Boolean).join(" · ")):""}
+    ${r.steps&&r.steps.n?row("Kroki średnio",Math.round(r.steps.avg).toLocaleString("pl-PL"),r.steps.ok+" z "+r.steps.n+" dni z celem "+(settings.steps||8000).toLocaleString("pl-PL")):""}
+    ${r.sleep?row("Sen średnio",hm(r.sleep)+" h",r.hrv?"HRV "+Math.round(r.hrv)+" ms":""):""}
+    ${r.food.n?row("Jedzenie średnio",Math.round(r.food.k)+" / "+Math.round(r.food.goal)+" kcal","białko "+Math.round(r.food.b)+" / "+settings.protein+" g · "+r.food.n+" "+(r.food.n===1?"dzień":"dni")+" z wpisami"):row("Jedzenie","—","brak wpisów")}
+    ${r.w.now?row("Waga średnio",kg(r.w.now)+" kg",(r.w.prev?((r.w.now-r.w.prev)>0?"+":"−")+kg(Math.abs(r.w.now-r.w.prev))+" kg do poprzedniego tygodnia · ":"")+r.w.n+" "+(r.w.n===1?"pomiar":"pomiary")):row("Waga","—","brak pomiarów w tym tygodniu")}
+    ${row("Mobilność rano",r.mob+" / 7",r.mob>=5?"cel tygodnia ✓":"cel 5")}
+  </div>`;
+}
 function viewProg(){
   const ws=Object.keys(WEIGHTS).sort(), now=ws.length?WEIGHTS[ws[ws.length-1]]:null;
   const pct=now==null?0:Math.max(0,Math.min(100,(W_START-now)/(W_START-W_GOAL)*100));
@@ -2506,6 +2572,7 @@ function viewProg(){
   const f=meFood||{n:0};
   const pr=PROG.slice().sort((a,b)=>a.d<b.d?1:-1);
   return `
+  ${reportCard()}
   <div class="slot">
     <div class="slotHead"><div class="slotName">Waga</div><div class="slotKcal">z ${W_START} do ${W_GOAL} kg · 0,5 kg/tydz.</div></div>
     ${adjBox()}
@@ -2648,11 +2715,12 @@ async function seedDziennik(){
 
 /* ---------- zdarzenia: trening i profil ---------- */
 main.addEventListener("click", async e=>{
-  const t=e.target.closest("[data-me],[data-wsave],[data-psave],[data-pdel],[data-imp],[data-sxadd],[data-sx],[data-sxdel],[data-wpt],[data-shopcopy]");
+  const t=e.target.closest("[data-me],[data-repw],[data-wsave],[data-psave],[data-pdel],[data-imp],[data-sxadd],[data-sx],[data-sxdel],[data-wpt],[data-shopcopy]");
   if(!t) return;
   const ds=t.dataset;
   if(ds.wpt!=null){ const tip=document.getElementById("wTip"); if(tip) tip.textContent=ds.wpt; return; }
-  if(ds.me){ meTab=ds.me; if(meTab==="prog") meFood=await weekFood(monday(iso(new Date()))); render(); return; }
+  if(ds.me){ meTab=ds.me; if(meTab==="prog"){ meFood=await weekFood(monday(iso(new Date()))); REP=await buildReport(repOff); } render(); return; }
+  if(ds.repw){ repOff=Math.min(0,repOff+(+ds.repw)); REP=await buildReport(repOff); render(); return; }
   if(ds.wsave){ const v=dec(document.getElementById("wNew").value);
     if(!(v>=40&&v<=200)){ toast("Podaj wagę w kg, np. 92,4"); return; }
     WEIGHTS[iso(new Date())]=Math.round(v*10)/10; await set("weights",WEIGHTS); syncWeights(); toast("Waga zapisana"); render(); return; }
@@ -2735,6 +2803,17 @@ document.documentElement.lang="pl";
 #scBanner{position:absolute;top:56px;left:12px;right:12px;background:var(--amber);color:#fff;padding:9px 12px;border-radius:10px;font-size:13px;text-align:center;display:none;z-index:3}
 #scHint{position:absolute;bottom:96px;left:0;right:0;text-align:center;color:#fff;font-size:13px;text-shadow:0 1px 3px #000}
 #scPhotoWrap{position:absolute;bottom:26px;left:0;right:0;display:flex;justify-content:center;gap:10px;z-index:3}
+#scModal.noCam #scCam{background:var(--bg);display:flex;flex-direction:column;justify-content:center;gap:16px;padding:80px 20px 40px}
+#scModal.noCam #scVideo,#scModal.noCam #scLine,#scModal.noCam #scHint{display:none}
+#scModal.noCam #scTop{color:var(--ink);background:none}
+#scModal.noCam{background:var(--bg)}
+#scModal.noCam #scX{background:var(--line-soft);color:var(--ink)}
+#scModal.noCam #scBanner{position:static;background:none;color:var(--muted);padding:0;font-size:14px;order:3}
+#scModal.noCam #scPhotoWrap{position:static;flex-direction:column;gap:12px;order:1}
+#scModal.noCam #scPhotoWrap .scGhost{background:var(--green);color:var(--on-green);font-size:17px;padding:20px;text-align:center;border-radius:16px}
+#scModal.noCam #scManual{display:none}
+#scModal.noCam #scMsg{position:static;order:2}
+#scModal.noCam #scMsg .scMsg.i{background:var(--surface);border:1px solid var(--line)}
 .scGhost{background:#fff;color:#17211C;border:none;border-radius:11px;padding:12px 16px;font-weight:600;cursor:pointer}
 #scMsg{position:absolute;bottom:150px;left:12px;right:12px;z-index:3}
 .scMsg{padding:9px 12px;border-radius:10px;font-size:13px;text-align:center}
@@ -2763,7 +2842,7 @@ document.documentElement.lang="pl";
   <div id="scCam">
     <video id="scVideo" playsinline autoplay muted></video>
     <div id="scLine"></div>
-    <div id="scBanner">Podgląd nie działa w tym oknie — użyj „Zrób zdjęcie kodu".</div>
+    <div id="scBanner">Podgląd kamery nie działa w oknie Claude. Zrób zdjęcie kodu albo wpisz cyfry spod kresek.</div>
     <div id="scHint">Nakieruj na kod kreskowy</div>
     <div id="scMsg"></div>
     <div id="scPhotoWrap">
