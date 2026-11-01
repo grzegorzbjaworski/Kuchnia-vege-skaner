@@ -2236,14 +2236,14 @@ function viewWeek(){
 }
 
 /* ---------- Postęp ---------- */
-function lineChart(series,{fmt,inv,goal,goalLab,h=150}={}){
+function lineChart(series,{fmt,inv,goal,goalLab,h=150,xfmt,span=0}={}){
   const all=series.flatMap(s=>s.pts); if(all.length<2) return `<div class="empty">Za mało danych na wykres.</div>`;
   const L=38,R=332,T=12,B=h-26, xs=all.map(p=>p.x), x0=Math.min(...xs), x1=Math.max(...xs,x0+7);
   let vs=all.map(p=>p.y); if(goal!=null) vs=vs.concat(goal);
-  let lo=Math.min(...vs), hi=Math.max(...vs); const pad=(hi-lo)*0.1||1; lo-=pad; hi+=pad;
+  let lo=Math.min(...vs), hi=Math.max(...vs); if(hi-lo<span){ const c=(hi+lo)/2; lo=c-span/2; hi=c+span/2; } const pad=(hi-lo)*0.1||1; lo-=pad; hi+=pad;
   const X=x=>L+(x-x0)/(x1-x0)*(R-L), Y=y=>inv?T+(y-lo)/(hi-lo)*(B-T):T+(hi-y)/(hi-lo)*(B-T);
   const ticks=[lo+pad,(lo+hi)/2,hi-pad].map(v=>`<line x1="${L}" x2="${R}" y1="${Y(v)}" y2="${Y(v)}" class="gl"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" class="ax">${fmt?fmt(v):Math.round(v)}</text>`).join("");
-  const tx=[x0,x1].map((x,i)=>`<text x="${X(x)}" y="${B+16}" text-anchor="${i?"end":"start"}" class="ax">${dm(addDays(PLAN_START,x))}</text>`).join("");
+  const tx=[x0,x1].map((x,i)=>`<text x="${X(x)}" y="${B+16}" text-anchor="${i?"end":"start"}" class="ax">${xfmt?xfmt(x):dm(addDays(PLAN_START,x))}</text>`).join("");
   const g=goal!=null?`<line x1="${L}" x2="${R}" y1="${Y(goal)}" y2="${Y(goal)}" class="goal"/><text x="${R}" y="${Y(goal)-5}" text-anchor="end" class="axg">${esc(goalLab||"")}</text>`:"";
   const lines=series.map(s=>(s.line!==false?`<polyline points="${s.pts.map(p=>X(p.x)+","+Y(p.y)).join(" ")}" fill="none" stroke="${s.c}" stroke-width="${s.w||2}" stroke-linejoin="round" stroke-linecap="round"${s.dash?` stroke-dasharray="${s.dash}"`:""}/>`:"")
     +(s.dots?s.pts.map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="3" fill="${s.c}" opacity=".45"/>`).join(""):"")).join("");
@@ -2265,6 +2265,22 @@ function viewCoProg(){
   const sl=k=>{const v=Array.from({length:k},(_,i)=>CO.wel[addDays(today,-i)]).filter(w=>w&&w.sleepSecs).map(w=>w.sleepSecs);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null};
   const s7=sl(7), s30=sl(30);
   const nights=Array.from({length:14},(_,i)=>addDays(today,-13+i)).map(d=>({d,s:CO.wel[d]&&CO.wel[d].sleepSecs||0}));
+  /* strefy tętna w bieganiu: 8 tygodni (Z5–Z7 razem) */
+  const zw=weeks.slice(-8), ZC=["#9AA5A0","var(--water)","#4C9A52","#E07B2C","var(--over)"], ZN=["Z1","Z2","Z3","Z4","Z5+"];
+  const zones=zw.map(m=>{const z=[0,0,0,0,0];CO.acts.forEach(a=>{const d=(a.start_date_local||"").slice(0,10);
+    if(RUN_T.test(a.type||"")&&d>=m&&d<=addDays(m,6)&&Array.isArray(a.icu_hr_zone_times)) a.icu_hr_zone_times.forEach((t,i)=>z[Math.min(i,4)]+=t||0);});return z;});
+  const zmax=Math.max(1800,...zones.map(z=>z.reduce((a,b)=>a+b,0)));
+  const easy=z=>{const t=z.reduce((a,b)=>a+b,0);return t?Math.round((z[0]+z[1])/t*100):null;};
+  const zNow=easy(zones[7]), zPrev=easy(zones[6]);
+  /* tętno spoczynkowe i HRV: 8 tygodni */
+  const w56=Array.from({length:56},(_,i)=>addDays(today,-55+i)).map(d=>CO.wel[d]).filter(Boolean);
+  const avgK=(k,n,off=0)=>{const v=Array.from({length:n},(_,i)=>CO.wel[addDays(today,-i-off)]).filter(w=>w&&w[k]!=null).map(w=>w[k]);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
+  const rhr7=avgK("restingHR",7), rhr28=avgK("restingHR",28,7), hrv7=avgK("hrv",7), hrv28=avgK("hrv",28,7);
+  /* kilometry biegu: ten miesiąc vs poprzedni, narastająco */
+  const mStart=today.slice(0,8)+"01", pStart=addDays(mStart,-1).slice(0,8)+"01", pEnd=addDays(mStart,-1);
+  const cum=(from,to)=>{let k=0;const pts=[{x:1,y:0}];for(let d=from;d<=to;d=addDays(d,1)){CO.acts.forEach(a=>{if(RUN_T.test(a.type||"")&&(a.start_date_local||"").slice(0,10)===d)k+=a.distance_km||0;});pts.push({x:+d.slice(8),y:k});}return pts;};
+  const kmNow=cum(mStart,today), kmPrev=cum(pStart,pEnd), dayN=+today.slice(8);
+  const prevSame=(kmPrev.find(p=>p.x===dayN)||kmPrev[kmPrev.length-1]).y, MON=["styczeń","luty","marzec","kwiecień","maj","czerwiec","lipiec","sierpień","wrzesień","październik","listopad","grudzień"];
   /* realizacja planu: 4 ostatnie tygodnie */
   let pN=0,dN=0; for(let d=addDays(today,-28); d<today; d=addDays(d,1)) coDay(d).items.forEach(({ev,act})=>{ if(/^\(opcjonalnie\)/i.test(ev.name||"")&&!act) return; pN++; if(act) dN++; });
   return `
@@ -2280,14 +2296,47 @@ function viewCoProg(){
     :`<div class="empty">Brak spokojnych biegów ≥ 20 min z tętnem.</div>`}
   </div>
   <div class="slot">
+    <div class="slotHead"><div class="slotName">Strefy tętna w bieganiu</div><div class="slotKcal">8 tygodni</div></div>
+    <div class="tstats" style="margin-top:8px">
+      <div><b class="num">${zNow!=null?zNow+"%":"—"}</b><span>Z1–Z2 w tym tyg.</span></div>
+      <div><b class="num">${zPrev!=null?zPrev+"%":"—"}</b><span>tydzień temu</span></div>
+      <div><b class="num">80%+</b><span>cel w bazie</span></div>
+    </div>
+    <div class="vbars zb" style="grid-template-columns:repeat(8,minmax(0,1fr))">${zones.map((z,i)=>`<div class="vcol" title="${dm(zw[i])}: ${ZN.map((n,j)=>n+" "+Math.round(z[j]/60)+" min").join(", ")}">${z.map((t,j)=>t?`<i style="height:${Math.max(2,Math.round(t/zmax*110))}px;background:${ZC[j]}"></i>`:"").join("")}</div>`).join("")}</div>
+    <div class="bdays" style="grid-template-columns:repeat(8,minmax(0,1fr))">${zw.map(m=>`<span>${dm(m)}</span>`).join("")}</div>
+    <div class="legend">${ZN.map((n,j)=>`<span><i class="dot" style="background:${ZC[j]}"></i>${n}</span>`).join("")}<span>max ${Math.round(zmax/60)} min</span></div>
+    <div class="setSub">W okresie bazy co najmniej 80% czasu biegu powinno być w strefach 1–2 (do 145). Zielone i pomarańczowe słupki to sygnał, żeby zwolnić.</div>
+  </div>
+  <div class="slot">
     <div class="slotHead"><div class="slotName">Forma i zmęczenie</div><div class="slotKcal">${lw?"forma "+Math.round(lw.ctl)+" · świeżość "+Math.round(lw.ctl-lw.atl):""}</div></div>
     ${lineChart([ctlS,atlS],{})}
     <div class="setSub">Zielona: forma (średnie obciążenie 6 tygodni). Czerwona: zmęczenie (7 dni). Gdy czerwona jest dużo wyżej — czas na lżejszy dzień.</div>
   </div>
   <div class="slot">
+    <div class="slotHead"><div class="slotName">Tętno spoczynkowe i HRV</div><div class="slotKcal">8 tygodni</div></div>
+    <div class="tstats" style="margin-top:8px">
+      <div><b class="num">${rhr7?Math.round(rhr7):"—"}</b><span>tętno sp., 7 dni${rhr28?" (było "+Math.round(rhr28)+")":""}</span></div>
+      <div><b class="num">${hrv7?Math.round(hrv7):"—"}</b><span>HRV, 7 dni${hrv28?" (było "+Math.round(hrv28)+")":""}</span></div>
+      <div><b class="num">${rhr7&&rhr28?(rhr7-rhr28>1.5?"↑ zmęczenie":rhr7-rhr28<-1?"↓ dobrze":"stabilnie"):"—"}</b><span>trend</span></div>
+    </div>
+    ${lineChart([{lab:"tętno spoczynkowe",c:"var(--over)",pts:w56.filter(w=>w.restingHR!=null).map(w=>({x:xo(w.id),y:w.restingHR}))}],{h:110,span:8})}
+    ${lineChart([{lab:"HRV",c:"var(--water)",pts:w56.filter(w=>w.hrv!=null).map(w=>({x:xo(w.id),y:w.hrv}))}],{h:110,span:16})}
+    <div class="setSub">Czerwona: tętno spoczynkowe — rośnie przy zmęczeniu, chorobie, złym śnie. Niebieska: HRV — spada przy zmęczeniu. Kilka dni wyżej/niżej niż zwykle to sygnał na lżejszy trening.</div>
+  </div>
+  <div class="slot">
     <div class="slotHead"><div class="slotName">Objętość tygodniowa</div><div class="slotKcal">12 tygodni</div></div>
     <div class="vbars">${vol.map((o,i)=>`<div class="vcol" title="${dm(weeks[i])}">${["swim","bike","run","gym","rest"].map(k=>o[k]?`<i style="height:${Math.round(o[k]/vmax*110)}px;background:var(--${k})"></i>`:"").join("")}</div>`).join("")}</div>
     <div class="legend">${["run","bike","swim","gym"].map(k=>`<span><i class="dot" style="background:var(--${k})"></i>${SPORT_N[k]}</span>`).join("")}<span>max ${hm(vmax)} h</span></div>
+  </div>
+  <div class="slot">
+    <div class="slotHead"><div class="slotName">Kilometry biegu w miesiącu</div><div class="slotKcal">${MON[+mStart.slice(5,7)-1]} vs ${MON[+pStart.slice(5,7)-1]}</div></div>
+    <div class="tstats" style="margin-top:8px">
+      <div><b class="num">${nf(kmNow[kmNow.length-1].y,1)}</b><span>km w tym miesiącu</span></div>
+      <div><b class="num">${nf(prevSame,1)}</b><span>do ${dayN}. dnia poprzedniego</span></div>
+      <div><b class="num">${nf(kmPrev[kmPrev.length-1].y,1)}</b><span>cały poprzedni</span></div>
+    </div>
+    ${lineChart([{lab:"poprzedni miesiąc",c:"var(--rest)",w:2,dash:"4 3",pts:kmPrev},{lab:"ten miesiąc",c:"var(--run)",w:2.4,pts:kmNow}],{h:130,xfmt:x=>x+". dzień",fmt:v=>nf(v,0)+" km"})}
+    <div class="setSub">Czerwona: ten miesiąc narastająco. Przerywana: poprzedni miesiąc.</div>
   </div>
   <div class="duo">
     <div class="slot"><div class="slotName">Sen</div>
