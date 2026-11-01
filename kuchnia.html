@@ -352,7 +352,22 @@ select.fIn{appearance:auto}
 .wkNav .arw{width:44px;height:44px}
 .bars{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;height:160px;border-bottom:1px solid var(--line-soft);padding-bottom:4px}
 .bcol{display:flex;flex-direction:column;justify-content:flex-end;gap:3px;height:100%}
-.bcol.now{background:var(--green-soft);border-radius:8px 8px 0 0}
+.bt{font-size:11px;font-weight:700;text-align:center;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1}
+.bt.pl{color:var(--muted);font-weight:600}
+.wkGoal{margin-bottom:12px}
+.wkGoal summary{display:flex;justify-content:space-between;align-items:baseline;gap:10px;cursor:pointer;list-style:none;min-height:32px}
+.wkGoal summary::-webkit-details-marker{display:none}
+.wkGoal summary .linkish{font-size:13px;white-space:nowrap}
+.wkGoal[open] summary .linkish{opacity:.6}
+.wkGoal .slotSub{margin-top:6px;line-height:1.5}
+.dRow{padding:10px 0;border-top:1px solid var(--line-soft)}
+.dRow:first-of-type{border-top:0}
+.dTop{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:14.5px}
+.dTop .dot{margin-right:8px}
+.dBar{height:8px;border-radius:99px;background:var(--line-soft);margin-top:7px;overflow:hidden}
+.dBar i{display:block;height:100%;border-radius:99px}
+.dPc{font-size:12px;color:var(--muted);margin-top:4px}
+.dPc.ok{color:var(--green)} .dPc.over{color:var(--amber)}
 .bb{display:block;border-radius:6px;box-sizing:border-box}
 .bb.done{background:var(--c)}
 .bb.todo{border:2px solid var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}
@@ -2184,7 +2199,11 @@ function coWeekData(mon){
 function viewWeek(){
   const today=iso(new Date()), mon=coWeek||monday(today), W=coWeekData(mon), sun=addDays(mon,6);
   const maxT=Math.max(3600, ...W.days.map(d=>{const D=coDay(d);return Math.max(D.items.reduce((a,x)=>a+Math.max(x.ev.moving_time||0,x.act?x.act.moving_time:0),0)+D.extra.reduce((a,x)=>a+x.moving_time,0),0)}));
-  const H=150, px=s=>Math.max(6,Math.round(s/maxT*H));
+  const H=118, px=s=>Math.max(8,Math.round(s/maxT*H));
+  /* krótki czas na słupku: 45' albo 5:03 */
+  const sh=t=>t>=3600?Math.floor(t/3600)+":"+p2(Math.floor(t%3600/60)):Math.round(t/60)+"'";
+  const SORD=["run","bike","swim","gym","rest"], SNM={...SPORT_N, rest:"Spacer i inne"};
+  const used=SORD.filter(k=>W.days.some(d=>{const D=coDay(d);return D.items.some(x=>SPORT_K(x.ev.type)===k)||D.extra.some(a=>SPORT_K(a.type)===k);}));
   const wkNote=W.days.flatMap(d=>coDay(d).notes).find(n=>/^Tydzień/i.test(n.name||""));
   const trips=[...new Set(W.days.flatMap(d=>coDay(d).trips))];
   return `
@@ -2195,25 +2214,36 @@ function viewWeek(){
   </div>
   ${trips.map(t=>`<div class="tip trip" style="margin-bottom:10px">✈ ${esc(t.name)} · ${dm(t.date)}–${dm(t.end_date||t.date)}</div>`).join("")}
   <div class="slot">
-    ${wkNote?`<div class="slotName">${esc(wkNote.name)}</div><div class="slotSub" style="margin-bottom:10px">${esc(wkNote.description||"")}</div>`:""}
+    ${wkNote?`<details class="wkGoal"><summary><span class="slotName">${esc(wkNote.name)}</span><span class="linkish">cel tygodnia</span></summary><div class="slotSub">${esc(wkNote.description||"")}</div></details>`:""}
     <div class="bars" aria-hidden="true">
-      ${W.days.map(d=>{const D=coDay(d);return `<div class="bcol${d===today?" now":""}">
+      ${W.days.map(d=>{const D=coDay(d);
+        const done=D.items.reduce((a,x)=>a+(x.act&&!x.act.bySteps?x.act.moving_time||0:0),0)+D.extra.reduce((a,x)=>a+(x.moving_time||0),0);
+        const todo=D.items.reduce((a,x)=>a+(!x.act?x.ev.moving_time||0:0),0);
+        const lab=done?`<span class="bt">${sh(done)}</span>`:todo&&d>=today?`<span class="bt pl">${sh(todo)}</span>`:"";
+        return `<div class="bcol">${lab}
         ${D.items.map(({ev,act})=>{const k=SPORT_K(ev.type), t=act?act.moving_time:ev.moving_time||1800, st=act?"done":d<today?"miss":"todo";
           return `<i class="bb ${st}" style="height:${px(t)}px;--c:var(--${k})"></i>`}).join("")}
         ${D.extra.map(a=>`<i class="bb done" style="height:${px(a.moving_time)}px;--c:var(--${SPORT_K(a.type)})"></i>`).join("")}
       </div>`}).join("")}
     </div>
     <div class="bdays">${W.days.map(d=>`<span class="${d===today?"now":""}">${DAYS[dowIdx(d)]}<br><b>${d.slice(8)}</b></span>`).join("")}</div>
-    <div class="legend"><span><i class="bb done" style="--c:var(--run)"></i>wykonany</span><span><i class="bb miss" style="--c:var(--muted)"></i>pominięty</span><span><i class="bb todo" style="--c:var(--bike)"></i>zaplanowany</span></div>
+    <div class="legend">${used.map(k=>`<span><i class="dot" style="background:var(--${k})"></i>${SNM[k]}</span>`).join("")}</div>
+    <div class="legend" style="margin-top:6px"><span><i class="bb done" style="--c:var(--muted)"></i>wykonany</span><span><i class="bb todo" style="--c:var(--muted)"></i>zaplanowany</span><span><i class="bb miss" style="--c:var(--muted)"></i>pominięty</span></div>
     <div class="tstats" style="margin-top:12px;border-bottom:0;padding-bottom:0">
       <div><b class="num">${hm(W.dn)}</b><span>z ${hm(W.pl)} h planu</span></div>
       <div><b class="num">${W.nDn}/${W.nPl}</b><span>treningów z planu</span></div>
       <div><b class="num">${W.pl?Math.round(W.dn/W.pl*100):0}%</b><span>realizacji czasu</span></div>
     </div>
   </div>
-  ${Object.keys(W.sum).length?`<div class="slot ttab">
-    <div class="trow th"><span>Dyscyplina</span><span>Plan</span><span>Garmin</span><span>%</span></div>
-    ${Object.entries(W.sum).map(([k,s])=>`<div class="trow"><span><i class="dot" style="background:var(--${k})"></i>${SPORT_N[k]}</span><span class="num">${s.p?hm(s.p):"—"}</span><b class="num">${s.d?hm(s.d):"—"}</b><span class="num">${s.p?Math.round(s.d/s.p*100):"—"}</span></div>`).join("")}
+  ${Object.keys(W.sum).length?`<div class="slot">
+    <div class="slotHead"><div class="slotName">Dyscypliny</div><div class="slotKcal">wykonane / plan</div></div>
+    ${SORD.filter(k=>W.sum[k]).map(k=>{const x=W.sum[k], pc=x.p?Math.round(x.d/x.p*100):null;
+      return `<div class="dRow">
+        <div class="dTop"><span><i class="dot" style="background:var(--${k})"></i>${SNM[k]}</span>
+          <span class="num"><b>${x.d?hm(x.d):"0:00"}</b>${x.p?" / "+hm(x.p)+" h":" h · poza planem"}</span></div>
+        <div class="dBar"><i style="width:${x.p?Math.min(100,x.d/x.p*100):100}%;background:var(--${k})"></i></div>
+        ${pc!=null?`<div class="dPc ${pc>120?"over":pc>=90?"ok":""}">${pc>120?pc+"% planu — więcej niż zaplanowane":pc>=90?pc+"% planu ✓":pc+"% planu"}</div>`:""}
+      </div>`;}).join("")}
   </div>`:""}
   <div class="slot">
     <ul class="days">${W.days.map(d=>{const D=coDay(d);
