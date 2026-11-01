@@ -422,6 +422,8 @@ input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:n
 .repRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:8px 0;border-top:1px solid var(--line-soft);font-size:14.5px;align-items:baseline}
 .repRow b{font-size:15.5px}
 .repSub{grid-column:1/-1;font-size:12.5px;color:var(--muted)}
+.dl{font-weight:700;white-space:nowrap}
+.dl.up{color:var(--green)} .dl.dn{color:var(--over)} .dl.eq{color:var(--muted);font-weight:600}
 .rep .arw:disabled{opacity:.35}
 .mobRow{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .mobBtn{flex:none;min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--green);color:var(--green);font-weight:650;font-size:14.5px;background:var(--surface)}
@@ -2512,8 +2514,14 @@ function adjBox(){
 /* ---------- raport tygodnia: treningi, bieganie, kroki, sen, jedzenie, waga, mobilność ---------- */
 const mmss=s=>Math.floor(s/60)+":"+p2(Math.round(s%60));
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+/* raport + poprzedni tydzień do porównania (w trwającym tygodniu: te same dni tygodnia) */
 async function buildReport(off){
-  const today=iso(new Date()), mon=addDays(monday(today),7*off), all=weekDays(mon), days=all.filter(d=>d<=today);
+  const r=await reportCore(off,7);
+  r.prev=await reportCore(off-1,r.days);
+  return r;
+}
+async function reportCore(off,limit){
+  const today=iso(new Date()), mon=addDays(monday(today),7*off), all=weekDays(mon), days=all.filter(d=>d<=today).slice(0,limit);
   const r={mon, sun:all[6], days:days.length};
   if(CO.ready){
     let kp=0,kd=0,od=0,ex=0;
@@ -2524,7 +2532,9 @@ async function buildReport(off){
     all.filter(d=>d>today).forEach(d=>coDay(d).items.forEach(({ev})=>{ if(!/^\(opcjonalnie\)/i.test(ev.name||"")) kp++; }));
     r.key={done:kd, plan:kp, opt:od, extra:ex};
     r.sum=coWeekData(mon).sum;
-    const runs=CO.acts.filter(a=>RUN_T.test(a.type||"")&&(a.start_date_local||"").slice(0,10)>=mon&&(a.start_date_local||"").slice(0,10)<=all[6]);
+    const last=days[days.length-1]||mon;
+    r.total=CO.acts.filter(a=>{const d=(a.start_date_local||"").slice(0,10); return d>=mon&&d<=last&&a.type!=="Transition";}).reduce((x,a)=>x+(a.moving_time||0),0);
+    const runs=CO.acts.filter(a=>RUN_T.test(a.type||"")&&(a.start_date_local||"").slice(0,10)>=mon&&(a.start_date_local||"").slice(0,10)<=last);
     const rt=runs.reduce((x,a)=>x+(a.moving_time||0),0), cad=runs.filter(a=>a.average_cadence);
     r.run={n:runs.length, min:Math.round(rt/60), km:runs.reduce((x,a)=>x+(a.distance_km||0),0),
       spm:cad.length?Math.round(cad.reduce((x,a)=>x+a.average_cadence*2*(a.moving_time||0),0)/cad.reduce((x,a)=>x+(a.moving_time||0),0)):null,
@@ -2537,12 +2547,17 @@ async function buildReport(off){
   r.food={n:F.length, k:avg(F.map(f=>f.zjedzone_kcal)), goal:avg(F.map(f=>f.cel_kcal)), b:avg(F.map(f=>+f.bialko_g.split(" ")[0]))};
   const w1=wAvg(mon,all[6]), w0=wAvg(addDays(mon,-7),addDays(mon,-1));
   r.w={now:w1&&w1.v, n:w1?w1.n:0, prev:w0&&w0.v};
-  r.mob=all.filter(d=>MOB[d]).length;
+  r.mob=days.filter(d=>MOB[d]).length;
   return r;
 }
 function reportCard(){
   const r=REP; if(!r) return "";
-  const row=(l,v,sub)=>`<div class="repRow"><span>${l}</span><b class="num">${v}</b>${sub?`<span class="repSub">${sub}</span>`:""}</div>`;
+  const P=r.prev||{};
+  /* strzałka do poprzedniego tygodnia; fmt formatuje różnicę, min = próg „bez zmian”, neutral = bez koloru (mniej treningu bywa zaplanowane) */
+  const dl=(v,pv,fmt,min=0,neutral=false)=>{ if(v==null||pv==null||!isFinite(v)||!isFinite(pv)) return "";
+    const d=v-pv; if(Math.abs(d)<=min) return `<span class="dl eq">= jak tydzień temu</span>`;
+    return `<span class="dl ${neutral?"eq":d>0?"up":"dn"}">${d>0?"↑ +":"↓ −"}${fmt(Math.abs(d))}</span>`; };
+  const row=(l,v,sub,d)=>`<div class="repRow"><span>${l}</span><b class="num">${v}</b>${sub||d?`<span class="repSub">${d||""}${d&&sub?" · ":""}${sub||""}</span>`:""}</div>`;
   const KN={run:"bieg",bike:"rower",swim:"basen",gym:"siła",rest:"spacer/inne"};
   const sports=r.sum?Object.entries(r.sum).filter(([,x])=>x.d>0).map(([k,x])=>KN[k]+" "+dur(x.d)).join(" · "):"";
   const head=r.mon===monday(iso(new Date()))?"Ten tydzień":dm(r.mon)+"–"+dm(r.sun);
@@ -2554,13 +2569,14 @@ function reportCard(){
     </div>
     ${r.key&&!r.key.plan?row("Treningi",String(r.key.opt+r.key.extra),"bez zaplanowanych kluczowych"):""}
     ${r.key&&r.key.plan?row("Kluczowe treningi",r.key.done+" / "+r.key.plan,[r.key.opt?"+"+r.key.opt+" opcjonalne":"",r.key.extra?"+"+r.key.extra+" poza planem":""].filter(Boolean).join(" · ")):""}
-    ${sports?row("Czas treningu",dur(Object.values(r.sum).reduce((x,y)=>x+y.d,0)),sports):""}
-    ${r.run&&r.run.n?row("Bieganie",r.run.min+" min · "+nf(r.run.km,1)+" km",[r.run.spm?"kadencja "+r.run.spm+" kr/min":"",r.run.p140?"tempo przy tętnie 140: "+mmss(r.run.p140)+"/km":""].filter(Boolean).join(" · ")):""}
-    ${r.steps&&r.steps.n?row("Kroki średnio",Math.round(r.steps.avg).toLocaleString("pl-PL"),r.steps.ok+" z "+r.steps.n+" dni z celem "+(settings.steps||8000).toLocaleString("pl-PL")):""}
-    ${r.sleep?row("Sen średnio",hm(r.sleep)+" h",r.hrv?"HRV "+Math.round(r.hrv)+" ms":""):""}
-    ${r.food.n?row("Jedzenie średnio",Math.round(r.food.k)+" / "+Math.round(r.food.goal)+" kcal","białko "+Math.round(r.food.b)+" / "+settings.protein+" g · "+r.food.n+" "+(r.food.n===1?"dzień":"dni")+" z wpisami"):row("Jedzenie","—","brak wpisów")}
+    ${sports?row("Czas treningu",dur(r.total),sports,dl(r.total,P.total,x=>dur(x),120,true)):""}
+    ${r.run&&r.run.n?row("Bieganie",r.run.min+" min · "+nf(r.run.km,1)+" km",[r.run.spm?"kadencja "+r.run.spm+" kr/min":"",r.run.p140?"tempo przy tętnie 140: "+mmss(r.run.p140)+"/km":""].filter(Boolean).join(" · "),dl(r.run.min,P.run&&P.run.min,x=>Math.round(x)+" min",2,true)):""}
+    ${r.steps&&r.steps.n?row("Kroki średnio",Math.round(r.steps.avg).toLocaleString("pl-PL"),r.steps.ok+" z "+r.steps.n+" dni z celem "+(settings.steps||8000).toLocaleString("pl-PL"),dl(r.steps.avg,P.steps&&P.steps.avg,x=>Math.round(x).toLocaleString("pl-PL"),100)):""}
+    ${r.sleep?row("Sen średnio",hm(r.sleep)+" h",r.hrv?"HRV "+Math.round(r.hrv)+" ms":"",dl(r.sleep,P.sleep,x=>Math.round(x/60)+" min",300)):""}
+    ${r.food.n?row("Jedzenie średnio",Math.round(r.food.k)+" / "+Math.round(r.food.goal)+" kcal","białko "+Math.round(r.food.b)+" / "+settings.protein+" g · "+r.food.n+" "+(r.food.n===1?"dzień":"dni")+" z wpisami",P.food&&P.food.n?dl(r.food.b,P.food.b,x=>Math.round(x)+" g białka",3):""):row("Jedzenie","—","brak wpisów")}
     ${r.w.now?row("Waga średnio",kg(r.w.now)+" kg",(r.w.prev?((r.w.now-r.w.prev)>0?"+":"−")+kg(Math.abs(r.w.now-r.w.prev))+" kg do poprzedniego tygodnia · ":"")+r.w.n+" "+(r.w.n===1?"pomiar":"pomiary")):row("Waga","—","brak pomiarów w tym tygodniu")}
-    ${row("Mobilność rano",r.mob+" / 7",r.mob>=5?"cel tygodnia ✓":"cel 5")}
+    ${row("Mobilność rano",r.mob+" / 7",r.mob>=5?"cel tygodnia ✓":"cel 5",dl(r.mob,P.mob,x=>x+(x===1?" dzień":" dni")))}
+    ${r.days<7?`<div class="setSub" style="padding-top:8px">Strzałki porównują z tymi samymi dniami poprzedniego tygodnia.</div>`:""}
   </div>`;
 }
 function viewProg(){
