@@ -502,7 +502,7 @@ const TH = ["/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhc
 const SLOTS = [["sniadanie","Śniadanie"],["obiad","Obiad"],["kolacja","Kolacja"],["przekaska","Przekąska"]];
 const SLOTMAP = Object.fromEntries(SLOTS);
 const DEF = {kcalRest:2200, kcalTrain:2440, protein:150, fat:75, carbs:300, water:3000, steps:8000, burnPct:60,
-  auto:1, height:188, born:"1977-05-21", deficit:500, kcalAdj:0, adjAt:null};
+  auto:1, height:188, born:"1977-05-21", deficit:500, kcalAdj:0, adjAt:null, theme:"auto"};
 
 let settings = {...DEF};
 let day = null;          // {meals:{slot:[{id,mult}]}, water:0, train:false, weight:null}
@@ -684,8 +684,13 @@ function weightCheck(){
 }
 
 /* ---------- render ---------- */
+/* motyw: auto = jak w telefonie, albo na stałe jasny / ciemny */
+function applyTheme(){
+  const r=document.documentElement;
+  if(settings.theme==="light"||settings.theme==="dark") r.dataset.theme=settings.theme; else delete r.dataset.theme;
+}
 function render(){
-  applyAuto();
+  applyAuto(); applyTheme();
   const dt = new Date(dateISO+"T12:00:00"), today = iso(new Date());
   const dow = ["niedziela","poniedziałek","wtorek","środa","czwartek","piątek","sobota"][dt.getDay()];
   const mon = ["stycznia","lutego","marca","kwietnia","maja","czerwca","lipca","sierpnia","września","października","listopada","grudnia"][dt.getMonth()];
@@ -1011,7 +1016,12 @@ function viewShop(){
 }
 
 function viewSettings(){
-  return `<div class="set">
+  const th=settings.theme||"auto";
+  return `<div class="cat" style="margin-top:4px">Wygląd</div>
+  <div class="seg" role="group" aria-label="Motyw" style="margin-bottom:14px">
+    ${[["auto","Jak telefon"],["light","Jasny"],["dark","Ciemny"]].map(([v,l])=>`<button data-themeset="${v}" aria-pressed="${th===v}">${l}</button>`).join("")}
+  </div>
+  <div class="set">
     <label class="setRow"><div><div class="setLab">Licz cele automatycznie</div><div class="setSub">metodą Respo z wagi, wzrostu i wieku</div></div>
       <input type="checkbox" class="tgl" data-auto="1" ${settings.auto?"checked":""}></label>
     ${settings.auto?`${sRow("Wzrost","cm","height")}
@@ -1351,6 +1361,7 @@ function wire(){
   main.querySelectorAll("[data-set]").forEach(inp=>inp.onchange=()=>{
     const v=parseInt(inp.value,10); if(!isNaN(v)&&v>0){settings[inp.dataset.set]=v; set("settings",settings); render()}
   });
+  main.querySelectorAll("[data-themeset]").forEach(b=>b.onclick=()=>{ settings.theme=b.dataset.themeset; set("settings",settings); render(); });
   const au=main.querySelector("[data-auto]");
   if(au) au.onchange=()=>{ applyAuto(); settings.auto=au.checked?1:0; set("settings",settings); render(); };
   const bo=main.querySelector("[data-born]");
