@@ -20,7 +20,7 @@
   --water:#2C6E9B; --water-soft:#DCE8F1; --over:#B4472E; --amber:#9A6B10;
   --warn-bg:#FBEDE8; --warn-line:#EBCFC4; --warn-ink:#8A3B25;
   --navbg:rgba(233,237,234,.94);
-  --swim:#17788C; --bike:#4F6B2A; --run:#B4402B; --gym:#6E6257; --rest:#B9C4BF;
+  --swim:#17788C; --bike:#4F6B2A; --run:#B4402B; --gym:#7A5BA6; --walk:#B08A3E; --rest:#B9C4BF;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -30,7 +30,7 @@
     --water:#67AEDC; --water-soft:#1C3142; --over:#EC8466; --amber:#DDAA45;
     --warn-bg:#3A221B; --warn-line:#5A3427; --warn-ink:#F2B9A5;
     --navbg:rgba(17,24,20,.94);
-    --swim:#4FB6C9; --bike:#93BD62; --run:#E58268; --gym:#AE9C8A; --rest:#4A5A53;
+    --swim:#4FB6C9; --bike:#93BD62; --run:#E58268; --gym:#B39BDB; --walk:#D9B66E; --rest:#4A5A53;
     color-scheme:dark;
   }
 }
@@ -41,7 +41,7 @@
     --water:#67AEDC; --water-soft:#1C3142; --over:#EC8466; --amber:#DDAA45;
     --warn-bg:#3A221B; --warn-line:#5A3427; --warn-ink:#F2B9A5;
     --navbg:rgba(17,24,20,.94);
-    --swim:#4FB6C9; --bike:#93BD62; --run:#E58268; --gym:#AE9C8A; --rest:#4A5A53;
+    --swim:#4FB6C9; --bike:#93BD62; --run:#E58268; --gym:#B39BDB; --walk:#D9B66E; --rest:#4A5A53;
     color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -353,6 +353,9 @@ select.fIn{appearance:auto}
 .bars{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;align-items:end;height:160px;border-bottom:1px solid var(--line-soft);padding-bottom:4px}
 .bcol{display:flex;flex-direction:column;justify-content:flex-end;gap:3px;height:100%}
 .bt{font-size:11px;font-weight:700;text-align:center;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1}
+.bt.ok{color:var(--green)}
+.bt.ms{color:var(--over)}
+.bi{font-size:13px;text-align:center;line-height:1.1;letter-spacing:-2px}
 .bt.pl{color:var(--muted);font-weight:600}
 .wkGoal{margin-bottom:12px}
 .wkGoal summary{display:flex;justify-content:space-between;align-items:baseline;gap:10px;cursor:pointer;list-style:none;min-height:32px}
@@ -369,9 +372,10 @@ select.fIn{appearance:auto}
 .dPc{font-size:12px;color:var(--muted);margin-top:4px}
 .dPc.ok{color:var(--green)} .dPc.over{color:var(--amber)}
 .bb{display:block;border-radius:6px;box-sizing:border-box}
-.bb.done{background:var(--c)}
-.bb.todo{border:2px solid var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}
-.bb.miss{border:2px dashed var(--muted);opacity:.55}
+.bb.done{background:var(--c);box-shadow:inset 0 0 0 1px color-mix(in srgb,#000 12%,transparent)}
+.bb.todo{border:2px dashed var(--c);background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--c) 22%,transparent) 0 5px,transparent 5px 10px)}
+.bb.opt{border:2px dashed var(--line);background:none;opacity:.6}
+.bb.miss{border:2px dashed var(--over);background:color-mix(in srgb,var(--over) 8%,transparent);opacity:.7}
 .bdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;margin-top:4px}
 .bdays b{font-size:14px;color:var(--ink)}
 .bdays .now,.bdays .now b{color:var(--green)}
@@ -1814,8 +1818,9 @@ const CO={mcp:null, sample:null, ready:false, loading:false, at:0, err:null,
 let coTab="week", coWeek=null, coOpen=null, coSkip=null, coTrip=false, coBusy=false, coRateEdit=null;
 /* kadencja biegu w krokach na minutę (Garmin podaje obroty jednej nogi) */
 const spm=a=>a&&/Run/.test(a.type||"")&&a.average_cadence?Math.round(a.average_cadence*2):undefined;
-const SPORT_K=t=>/Run/.test(t)?"run":/Ride|Bike/.test(t)?"bike":/Swim/.test(t)?"swim":/Weight|Workout|Yoga|Pilates/.test(t)?"gym":"rest";
-const SPORT_N={run:"Bieg",bike:"Rower",swim:"Pływanie",gym:"Siła",rest:"Inne"};
+const SPORT_K=t=>/Run/.test(t)?"run":/Ride|Bike/.test(t)?"bike":/Swim/.test(t)?"swim":/Weight|Workout|Yoga|Pilates/.test(t)?"gym":/Walk|Hike/.test(t)?"walk":"rest";
+const SPORT_N={run:"Bieg",bike:"Rower",swim:"Pływanie",gym:"Siła",walk:"Spacer",rest:"Inne"};
+const SPORT_I={run:"🏃",bike:"🚴",swim:"🏊",gym:"🏋️",walk:"🚶",rest:"•"};
 const RUN_T=/^(Run|TrailRun|VirtualRun)$/;
 const p2=n=>String(n).padStart(2,"0");
 const dur=s=>{s=Math.round(+s||0);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+":"+p2(m)+" h":m+" min"};
@@ -2199,10 +2204,10 @@ function coWeekData(mon){
 function viewWeek(){
   const today=iso(new Date()), mon=coWeek||monday(today), W=coWeekData(mon), sun=addDays(mon,6);
   const maxT=Math.max(3600, ...W.days.map(d=>{const D=coDay(d);return Math.max(D.items.reduce((a,x)=>a+Math.max(x.ev.moving_time||0,x.act?x.act.moving_time:0),0)+D.extra.reduce((a,x)=>a+x.moving_time,0),0)}));
-  const H=118, px=s=>Math.max(8,Math.round(s/maxT*H));
+  const H=100, px=s=>Math.max(8,Math.round(s/maxT*H));
   /* krótki czas na słupku: 45' albo 5:03 */
   const sh=t=>t>=3600?Math.floor(t/3600)+":"+p2(Math.floor(t%3600/60)):Math.round(t/60)+"'";
-  const SORD=["run","bike","swim","gym","rest"], SNM={...SPORT_N, rest:"Spacer i inne"};
+  const SORD=["run","bike","swim","gym","walk","rest"], SNM=SPORT_N;
   const used=SORD.filter(k=>W.days.some(d=>{const D=coDay(d);return D.items.some(x=>SPORT_K(x.ev.type)===k)||D.extra.some(a=>SPORT_K(a.type)===k);}));
   const wkNote=W.days.flatMap(d=>coDay(d).notes).find(n=>/^Tydzień/i.test(n.name||""));
   const trips=[...new Set(W.days.flatMap(d=>coDay(d).trips))];
@@ -2219,16 +2224,19 @@ function viewWeek(){
       ${W.days.map(d=>{const D=coDay(d);
         const done=D.items.reduce((a,x)=>a+(x.act&&!x.act.bySteps?x.act.moving_time||0:0),0)+D.extra.reduce((a,x)=>a+(x.moving_time||0),0);
         const todo=D.items.reduce((a,x)=>a+(!x.act?x.ev.moving_time||0:0),0);
-        const lab=done?`<span class="bt">${sh(done)}</span>`:todo&&d>=today?`<span class="bt pl">${sh(todo)}</span>`:"";
+        const ks=[...new Set([...D.items.map(x=>SPORT_K(x.ev.type)),...D.extra.map(a=>SPORT_K(a.type))])];
+        const miss=D.items.some(x=>!x.act&&d<today&&!/^\(opcjonalnie\)/i.test(x.ev.name||""));
+        const ico=ks.length?`<span class="bi">${ks.map(k=>SPORT_I[k]).join("")}</span>`:"";
+        const lab=done?`${ico}<span class="bt ok">✓ ${sh(done)}</span>`:todo&&d>=today?`${ico}<span class="bt pl">${sh(todo)}</span>`:miss?`${ico}<span class="bt ms">✕</span>`:ico;
         return `<div class="bcol">${lab}
-        ${D.items.map(({ev,act})=>{const k=SPORT_K(ev.type), t=act?act.moving_time:ev.moving_time||1800, st=act?"done":d<today?"miss":"todo";
+        ${D.items.map(({ev,act})=>{const k=SPORT_K(ev.type), t=act?act.moving_time:ev.moving_time||1800, st=act?"done":d<today?(/^\(opcjonalnie\)/i.test(ev.name||"")?"opt":"miss"):"todo";
           return `<i class="bb ${st}" style="height:${px(t)}px;--c:var(--${k})"></i>`}).join("")}
         ${D.extra.map(a=>`<i class="bb done" style="height:${px(a.moving_time)}px;--c:var(--${SPORT_K(a.type)})"></i>`).join("")}
       </div>`}).join("")}
     </div>
     <div class="bdays">${W.days.map(d=>`<span class="${d===today?"now":""}">${DAYS[dowIdx(d)]}<br><b>${d.slice(8)}</b></span>`).join("")}</div>
-    <div class="legend">${used.map(k=>`<span><i class="dot" style="background:var(--${k})"></i>${SNM[k]}</span>`).join("")}</div>
-    <div class="legend" style="margin-top:6px"><span><i class="bb done" style="--c:var(--muted)"></i>wykonany</span><span><i class="bb todo" style="--c:var(--muted)"></i>zaplanowany</span><span><i class="bb miss" style="--c:var(--muted)"></i>pominięty</span></div>
+    <div class="legend">${used.map(k=>`<span><i class="dot" style="background:var(--${k})"></i>${SPORT_I[k]} ${SNM[k]}</span>`).join("")}</div>
+    <div class="legend" style="margin-top:6px"><span><i class="bb done" style="--c:var(--green)"></i>✓ wykonany</span><span><i class="bb todo" style="--c:var(--muted)"></i>do zrobienia</span><span><i class="bb miss"></i>pominięty</span></div>
     <div class="tstats" style="margin-top:12px;border-bottom:0;padding-bottom:0">
       <div><b class="num">${hm(W.dn)}</b><span>z ${hm(W.pl)} h planu</span></div>
       <div><b class="num">${W.nDn}/${W.nPl}</b><span>treningów z planu</span></div>
@@ -2289,7 +2297,7 @@ function viewCoProg(){
   const lw=wd[wd.length-1];
   /* objętość tygodniowa, 12 tygodni */
   const today=iso(new Date()), m0=monday(today), weeks=Array.from({length:12},(_,i)=>addDays(m0,-7*(11-i)));
-  const vol=weeks.map(m=>{const o={run:0,bike:0,swim:0,gym:0,rest:0};CO.acts.forEach(a=>{const d=(a.start_date_local||"").slice(0,10);if(d>=m&&d<=addDays(m,6))o[SPORT_K(a.type)]+=a.moving_time||0});return o});
+  const vol=weeks.map(m=>{const o={run:0,bike:0,swim:0,gym:0,walk:0,rest:0};CO.acts.forEach(a=>{const d=(a.start_date_local||"").slice(0,10);if(d>=m&&d<=addDays(m,6))o[SPORT_K(a.type)]+=a.moving_time||0});return o});
   const vmax=Math.max(3600,...vol.map(o=>Object.values(o).reduce((a,b)=>a+b,0)));
   /* sen */
   const sl=k=>{const v=Array.from({length:k},(_,i)=>CO.wel[addDays(today,-i)]).filter(w=>w&&w.sleepSecs).map(w=>w.sleepSecs);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null};
@@ -2355,8 +2363,8 @@ function viewCoProg(){
   </div>
   <div class="slot">
     <div class="slotHead"><div class="slotName">Objętość tygodniowa</div><div class="slotKcal">12 tygodni</div></div>
-    <div class="vbars">${vol.map((o,i)=>`<div class="vcol" title="${dm(weeks[i])}">${["swim","bike","run","gym","rest"].map(k=>o[k]?`<i style="height:${Math.round(o[k]/vmax*110)}px;background:var(--${k})"></i>`:"").join("")}</div>`).join("")}</div>
-    <div class="legend">${["run","bike","swim","gym"].map(k=>`<span><i class="dot" style="background:var(--${k})"></i>${SPORT_N[k]}</span>`).join("")}<span>max ${hm(vmax)} h</span></div>
+    <div class="vbars">${vol.map((o,i)=>`<div class="vcol" title="${dm(weeks[i])}">${["swim","bike","run","gym","walk","rest"].map(k=>o[k]?`<i style="height:${Math.round(o[k]/vmax*110)}px;background:var(--${k})"></i>`:"").join("")}</div>`).join("")}</div>
+    <div class="legend">${["run","bike","swim","gym","walk"].map(k=>`<span><i class="dot" style="background:var(--${k})"></i>${SPORT_N[k]}</span>`).join("")}<span>max ${hm(vmax)} h</span></div>
   </div>
   <div class="slot">
     <div class="slotHead"><div class="slotName">Kilometry biegu w miesiącu</div><div class="slotKcal">${MON[+mStart.slice(5,7)-1]} vs ${MON[+pStart.slice(5,7)-1]}</div></div>
@@ -2637,7 +2645,7 @@ function reportCard(){
     const d=v-pv; if(Math.abs(d)<=min) return `<span class="dl eq">= jak tydzień temu</span>`;
     return `<span class="dl ${neutral?"eq":d>0?"up":"dn"}">${d>0?"↑ +":"↓ −"}${fmt(Math.abs(d))}</span>`; };
   const row=(l,v,sub,d)=>`<div class="repRow"><span>${l}</span><b class="num">${v}</b>${sub||d?`<span class="repSub">${d||""}${d&&sub?" · ":""}${sub||""}</span>`:""}</div>`;
-  const KN={run:"bieg",bike:"rower",swim:"basen",gym:"siła",rest:"spacer/inne"};
+  const KN={run:"bieg",bike:"rower",swim:"basen",gym:"siła",walk:"spacer",rest:"inne"};
   const sports=r.sum?Object.entries(r.sum).filter(([,x])=>x.d>0).map(([k,x])=>KN[k]+" "+dur(x.d)).join(" · "):"";
   const head=r.mon===monday(iso(new Date()))?"Ten tydzień":dm(r.mon)+"–"+dm(r.sun);
   return `<div class="slot rep">
