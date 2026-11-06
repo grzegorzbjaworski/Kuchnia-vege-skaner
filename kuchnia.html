@@ -1384,6 +1384,13 @@ const W=[
 [swim("40 min"),gym(SA,25)],[run(5)],[],[run(5),gym(SB,20)],[],[bike("1,5 h")],
 [run(10,"Ostatni bieg bloku. Porównaj tętno z T5 przy tym samym tempie — tak widać, ile przybyło bazy.")]]}
 ];
+/* Trening siłowy w gabinecie (HG) — skierowanie: Lumb BS-Schaden m. radik L5/S1.
+   Dopisywany na koniec listy dnia, żeby nie przesunąć ID istniejących jednostek. */
+function physio(h){return{k:"gym",t:"Trening siłowy",a:"1 h · "+h,d:["Zajęcia w gabinecie (HG), 60 minut, godz. "+h+".","Powiedz prowadzącemu o mrowieniu i pulsowaniu łydek po biegu 16.10.","Zapytaj, które ćwiczenia robić w domu i czego unikać."],tip:"Termin ustalony z gabinetem — zmieniaj go tam, nie w aplikacji."}}
+const PHYSIO=[["2026-11-12","16:00"],["2026-11-18","17:30"],["2026-11-19","18:00"],["2026-11-24","17:00"],["2026-11-26","17:00"],
+  ["2026-12-01","18:00"],["2026-12-03","17:00"],["2026-12-09","17:00"],["2026-12-10","18:00"],["2026-12-15","18:00"]];
+PHYSIO.forEach(([d,h])=>{const n=Math.round((new Date(d+"T12:00:00")-new Date(PLAN_START+"T12:00:00"))/864e5);
+  const w=Math.floor(n/7), di=n%7; if(W[w]) W[w].days[di].push(physio(h));});
 const MON3=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"];
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return iso(d)};
 const dayDiff=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
