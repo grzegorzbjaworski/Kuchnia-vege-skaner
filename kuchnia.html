@@ -20,7 +20,7 @@
   --water:#2C6E9B; --water-soft:#DCE8F1; --over:#B4472E; --amber:#9A6B10;
   --warn-bg:#FBEDE8; --warn-line:#EBCFC4; --warn-ink:#8A3B25;
   --navbg:rgba(233,237,234,.94);
-  --swim:#17788C; --bike:#4F6B2A; --run:#B4402B; --gym:#6E6257; --physio:#7A4E9C; --rest:#B9C4BF;
+  --swim:#17788C; --bike:#4F6B2A; --run:#B4402B; --gym:#6E6257; --rest:#B9C4BF;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -30,7 +30,7 @@
     --water:#67AEDC; --water-soft:#1C3142; --over:#EC8466; --amber:#DDAA45;
     --warn-bg:#3A221B; --warn-line:#5A3427; --warn-ink:#F2B9A5;
     --navbg:rgba(17,24,20,.94);
-    --swim:#4FB6C9; --bike:#93BD62; --run:#E58268; --gym:#AE9C8A; --physio:#B996D6; --rest:#4A5A53;
+    --swim:#4FB6C9; --bike:#93BD62; --run:#E58268; --gym:#AE9C8A; --rest:#4A5A53;
     color-scheme:dark;
   }
 }
@@ -41,7 +41,7 @@
     --water:#67AEDC; --water-soft:#1C3142; --over:#EC8466; --amber:#DDAA45;
     --warn-bg:#3A221B; --warn-line:#5A3427; --warn-ink:#F2B9A5;
     --navbg:rgba(17,24,20,.94);
-    --swim:#4FB6C9; --bike:#93BD62; --run:#E58268; --gym:#AE9C8A; --physio:#B996D6; --rest:#4A5A53;
+    --swim:#4FB6C9; --bike:#93BD62; --run:#E58268; --gym:#AE9C8A; --rest:#4A5A53;
     color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1384,9 +1384,9 @@ const W=[
 [swim("40 min"),gym(SA,25)],[run(5)],[],[run(5),gym(SB,20)],[],[bike("1,5 h")],
 [run(10,"Ostatni bieg bloku. Porównaj tętno z T5 przy tym samym tempie — tak widać, ile przybyło bazy.")]]}
 ];
-/* Fizjoterapia (Heilgymnastik) — skierowanie: Lumb BS-Schaden m. radik L5/S1.
-   Dopisywana na koniec listy dnia, żeby nie przesunąć ID istniejących jednostek. */
-function physio(h){return{k:"physio",t:"Fizjoterapia",a:h,d:["Heilgymnastik — ćwiczenia lecznicze na odcinek lędźwiowy (L5/S1).","Powiedz terapeucie o mrowieniu i pulsowaniu łydek po biegu 16.10.","Zapytaj, które ćwiczenia robić w domu i czego unikać przy sile."],tip:"Termin z gabinetu — nie przesuwaj go w aplikacji, tylko u terapeuty."}}
+/* Trening siłowy w gabinecie (HG) — skierowanie: Lumb BS-Schaden m. radik L5/S1.
+   Dopisywany na koniec listy dnia, żeby nie przesunąć ID istniejących jednostek. */
+function physio(h){return{k:"gym",t:"Trening siłowy",a:"1 h · "+h,d:["Zajęcia w gabinecie (HG), 60 minut, godz. "+h+".","Powiedz prowadzącemu o mrowieniu i pulsowaniu łydek po biegu 16.10.","Zapytaj, które ćwiczenia robić w domu i czego unikać."],tip:"Termin ustalony z gabinetem — zmieniaj go tam, nie w aplikacji."}}
 const PHYSIO=[["2026-11-12","16:00"],["2026-11-18","17:30"],["2026-11-19","18:00"],["2026-11-24","17:00"],["2026-11-26","17:00"],
   ["2026-12-01","18:00"],["2026-12-03","17:00"],["2026-12-09","17:00"],["2026-12-10","18:00"],["2026-12-15","18:00"]];
 PHYSIO.forEach(([d,h])=>{const n=Math.round((new Date(d+"T12:00:00")-new Date(PLAN_START+"T12:00:00"))/864e5);
@@ -1491,16 +1491,16 @@ function viewTrain(){
   </div>`;
 }
 function trainerText(){
-  const w=trWeek, ss=sessions(w); let km=0,kmT=0,done=0,longest=0,bk=0,sw=0,gy=0,ph=0;
+  const w=trWeek, ss=sessions(w); let km=0,kmT=0,done=0,longest=0,bk=0,sw=0,gy=0;
   ss.forEach(o=>{if(o.s.km)kmT+=o.s.km;if(TR.done[o.id]){done++;if(o.s.km){km+=o.s.km;longest=Math.max(longest,o.s.km)}
-    if(o.s.k==="bike")bk++;if(o.s.k==="swim")sw++;if(o.s.k==="gym")gy++;if(o.s.k==="physio")ph++}});
+    if(o.s.k==="bike")bk++;if(o.s.k==="swim")sw++;if(o.s.k==="gym")gy++}});
   const a=addDays(PLAN_START,7*w), b=addDays(a,6);
   const wk=Object.keys(WEIGHTS).filter(d=>d<=b).sort(), lastW=wk.length?String(WEIGHTS[wk[wk.length-1]].toFixed(1)).replace(".",",")+" kg ("+dm(wk[wk.length-1])+")":"—";
   const pr=PROG.filter(e=>e.wk==="T"+(w+1)).sort((x,y)=>x.d<y.d?1:-1)[0];
   const f=trFood||{n:0};
   return `Tydzień T${w+1} (${weekLabel(w)})
 Bieg: ${km} z ${kmT} km, najdłuższy ${longest} km
-Rower: ${bk} · Basen: ${sw} · Siła: ${gy}${ph?" · Fizjoterapia: "+ph:""}
+Rower: ${bk} · Basen: ${sw} · Siła: ${gy}
 Wykonane: ${done} z ${ss.length} jednostek
 Waga: ${lastW}
 Jedzenie: ${f.n?`średnio ${f.k} kcal, białko ${f.b} g (${f.n} ${f.n===1?"dzień":"dni"} z wpisami)`:"brak wpisów"}
