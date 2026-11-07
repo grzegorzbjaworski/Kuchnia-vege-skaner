@@ -464,6 +464,9 @@ input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:n
 .dl{font-weight:700;white-space:nowrap}
 .dl.up{color:var(--green)} .dl.dn{color:var(--over)} .dl.eq{color:var(--muted);font-weight:600}
 .rep .arw:disabled{opacity:.35}
+.suppRow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.suppBtn{min-height:42px;padding:0 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600;font-size:14px}
+.suppBtn[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--on-green)}
 .mobRow{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .mobBtn{flex:none;min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--green);color:var(--green);font-weight:650;font-size:14.5px;background:var(--surface)}
 .mobBtn[aria-pressed="true"]{background:var(--green);color:var(--on-green)}
@@ -522,7 +525,7 @@ const TH = ["/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhc
 const SLOTS = [["sniadanie","Śniadanie"],["obiad","Obiad"],["kolacja","Kolacja"],["przekaska","Przekąska"]];
 const SLOTMAP = Object.fromEntries(SLOTS);
 const DEF = {kcalRest:2200, kcalTrain:2440, protein:150, fat:75, carbs:300, water:3000, steps:8000, burnPct:60,
-  auto:1, height:188, born:"1977-05-21", deficit:500, kcalAdj:0, adjAt:null, theme:"auto"};
+  auto:1, height:188, born:"1977-05-21", deficit:500, kcalAdj:0, adjAt:null, theme:"auto", supps:"Witamina D3, Omega-3, Kreatyna"};
 
 let settings = {...DEF};
 let day = null;          // {meals:{slot:[{id,mult}]}, water:0, train:false, weight:null}
@@ -730,6 +733,7 @@ function viewDay(){
   ${backend==="mem"?`<div class="warn">Zapis nie działa w tym oknie. Dane znikną po zamknięciu.</div>`:""}
   ${coachDayCard()}
   ${mobCard()}
+  ${suppCard()}
   <div class="hero">
     <div class="heroTop">
       <div>
@@ -819,6 +823,19 @@ function mobCard(){
     </div>
     <div class="mobDots" aria-hidden="true">${st.wk.map((x,i)=>`<span class="${MOB[x]?"on":""} ${x===dateISO?"cur":""}">${L[i]}</span>`).join("")}</div>
     <details class="mobHow"><summary>Co robić (10 min)</summary><div class="setSub">${MOB_HOW}</div></details>
+  </div>`;
+}
+/* ---------- suplementy: codzienne odhaczanie (lista w Ustawieniach) ---------- */
+let SUPP={};  // {"RRRR-MM-DD": ["Witamina D3", ...]}
+const suppList=()=>String(settings.supps||"").split(",").map(x=>x.trim()).filter(Boolean);
+function suppCard(){
+  const L=suppList(), today=iso(new Date()); if(!L.length||dateISO>today) return "";
+  const got=SUPP[dateISO]||[], wk=weekDays(monday(dateISO)).filter(d=>d<=today);
+  const done=wk.reduce((a,d)=>a+L.filter(n=>(SUPP[d]||[]).includes(n)).length,0);
+  return `<div class="slot supp">
+    <div class="slotHead"><div class="slotName">Suplementy</div><div class="slotKcal num">${L.filter(n=>got.includes(n)).length}/${L.length} dziś</div></div>
+    <div class="suppRow">${L.map(n=>`<button class="suppBtn" data-supp="${esc(n)}" aria-pressed="${got.includes(n)}">${got.includes(n)?"✓ ":""}${esc(n)}</button>`).join("")}</div>
+    <div class="setSub" style="margin-top:8px">W tym tygodniu ${done} z ${wk.length*L.length}. Listę zmienisz w Profil → Ustawienia.</div>
   </div>`;
 }
 function mac(lab,val,goal,cls=""){
@@ -1055,6 +1072,8 @@ function viewSettings(){
     ${sRow("Doliczaj kalorie z treningu i kroków","% spalonych kalorii","burnPct")}
     ${sRow("Cel kroków","dziennie; kroki ponad cel podnoszą limit kalorii","steps")}
     ${sRow("Woda na dzień","w mililitrach, po 250 ml na szklankę","water")}
+    <div class="setRow" style="flex-wrap:wrap"><div style="flex:1 1 100%"><div class="setLab">Suplementy</div><div class="setSub">po przecinku; pusta lista ukrywa kartę</div></div>
+      <input class="fIn" data-suppset="1" value="${esc(settings.supps||"")}" style="flex:1 1 100%;margin-top:8px"></div>
   </div>
   ${energyBox()}
   <div class="cat" style="margin-top:20px">Moje dania i produkty</div>
@@ -1347,6 +1366,8 @@ function wire(){
     const i=+b.dataset.glass, cur=Math.round(day.water/250);
     day.water = (i+1===cur ? i : i+1)*250; save(); render();
   });
+  main.querySelectorAll("[data-supp]").forEach(b=>b.onclick=()=>{ const n=b.dataset.supp, a=(SUPP[dateISO]||[]).slice(), i=a.indexOf(n);
+    if(i<0) a.push(n); else a.splice(i,1); if(a.length) SUPP[dateISO]=a; else delete SUPP[dateISO]; set("supps",SUPP); render(); });
   const mb=main.querySelector("[data-mob]");
   if(mb) mb.onclick=()=>{ if(MOB[dateISO]) delete MOB[dateISO]; else MOB[dateISO]=1; set("mobility",MOB);
     const st=mobStats(dateISO); if(MOB[dateISO]) toast(st.n>=5?"Cel tygodnia zrobiony 💪":"Mobilność zaliczona · "+st.n+"/7"); render(); };
@@ -1381,6 +1402,8 @@ function wire(){
   main.querySelectorAll("[data-set]").forEach(inp=>inp.onchange=()=>{
     const v=parseInt(inp.value,10); if(!isNaN(v)&&v>0){settings[inp.dataset.set]=v; set("settings",settings); render()}
   });
+  const ss=main.querySelector("[data-suppset]");
+  if(ss) ss.onchange=()=>{ settings.supps=ss.value; set("settings",settings); toast("Lista suplementów zapisana"); };
   main.querySelectorAll("[data-themeset]").forEach(b=>b.onclick=()=>{ settings.theme=b.dataset.themeset; set("settings",settings); render(); });
   const au=main.querySelector("[data-auto]");
   if(au) au.onchange=()=>{ applyAuto(); settings.auto=au.checked?1:0; set("settings",settings); render(); };
@@ -2508,6 +2531,7 @@ Regeneracja (7 dni): ${JSON.stringify(wel)}
 Jedzenie dziś (z dziennika w tej aplikacji; dzień jeszcze trwa): ${JSON.stringify(await foodFor(t))}
 Jedzenie ostatnie 6 dni (kcal zjedzone / cel, białko g; 0 = brak wpisów): ${JSON.stringify(await Promise.all([1,2,3,4,5,6].map(async i=>{const f=await foodFor(addDays(t,-i));return f.data.slice(5)+": "+f.zjedzone_kcal+"/"+f.cel_kcal+", B "+f.bialko_g.split(" ")[0];})))}
 Poranna mobilność (cel codziennie ok. 10 min, 5 dni w tygodniu to sukces): w tym tygodniu ${mobStats(t).n}/7, ostatnie 14 dni ${Array.from({length:14},(_,i)=>MOB[addDays(t,-i)]?1:0).reduce((a,b)=>a+b,0)}/14, seria ${mobStats(t).streak} dni.
+Suplementy (ostatnie 7 dni): ${suppList().map(n=>n+" "+Array.from({length:7},(_,i)=>(SUPP[addDays(t,-i)]||[]).includes(n)?1:0).reduce((a,b)=>a+b,0)+"/7").join(", ")||"brak listy"}.
 Respo to metoda żywienia (dietetyk Michał Wrzosek, książka z przepisami), a nie osobna aplikacja — posiłki Grzegorz zapisuje w tej aplikacji (Personal Coach) i to je widzisz powyżej; po inne dni sięgnij narzędziem get_food. Gdy pyta o jedzenie, odnieś się konkretnie do tego, co już zjadł, i podpowiedz, co dojeść (zwłaszcza białko).
 Starty: ${JSON.stringify(races().map(r=>({data:r.date,kat:r.category,nazwa:r.name})))}`;
 }
@@ -2942,8 +2966,8 @@ document.documentElement.lang="pl";
 (async()=>{
   main.innerHTML=`<div class="empty" style="padding:48px 4px;text-align:center">Wczytuję…</div>`;
   await initStore(); await migrateLocal();
-  const [p,cu,tr,ws,pg,sx,mb] = await Promise.all(["products","custom","trening","weights","prog","shopExtra","mobility"].map(get));
-  P=p||{}; C=cu||{}; TR={done:{},moves:{},notes:{},...(tr||{})}; WEIGHTS=ws||{}; PROG=pg||[]; SHOPX=sx||[]; MOB=mb||{};
+  const [p,cu,tr,ws,pg,sx,mb,sp] = await Promise.all(["products","custom","trening","weights","prog","shopExtra","mobility","supps"].map(get));
+  P=p||{}; C=cu||{}; TR={done:{},moves:{},notes:{},...(tr||{})}; WEIGHTS=ws||{}; PROG=pg||[]; SHOPX=sx||[]; MOB=mb||{}; SUPP=sp||{};
   QTH=ownThumb("+","u");
   await seedDziennik(); await seedPlan();
   await load();
