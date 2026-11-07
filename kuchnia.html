@@ -438,6 +438,20 @@ input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:n
 .mTot{text-align:right;font-size:14px;padding-top:6px;border-top:1px solid var(--line)}
 .mTot b{font-size:18px}
 .tgl{width:24px;height:24px;accent-color:var(--green);flex:none}
+.rList{margin-top:10px}
+.rRow{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:7px 0;border-top:1px solid var(--line-soft);font-size:13.5px}
+.rRow:first-child{border-top:0}
+.rRow.now{background:var(--green-soft);border-radius:10px;padding:7px 8px;margin:2px -8px;border-top:0}
+.rRow.past{opacity:.75}
+.rD{font-weight:650;white-space:nowrap}
+.rBar{position:relative;height:10px;border-radius:99px;background:var(--line-soft);overflow:hidden}
+.rBar i{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
+.rPlan{background:color-mix(in srgb,var(--run) 25%,transparent)}
+.rDone{background:var(--run)}
+.rK{white-space:nowrap;font-size:13px;color:var(--muted)} .rK b{color:var(--ink)}
+.rN{grid-column:2/-1;font-size:12px;color:var(--muted)}
+.rAll{margin:8px 0}
+.rAll summary{cursor:pointer;padding:6px 0;font-size:14px}
 .repRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:8px 0;border-top:1px solid var(--line-soft);font-size:14.5px;align-items:baseline}
 .repRow b{font-size:15.5px}
 .repSub{grid-column:1/-1;font-size:12.5px;color:var(--muted)}
@@ -2298,6 +2312,40 @@ function lineChart(series,{fmt,inv,goal,goalLab,h=150,xfmt,span=0}={}){
     +(s.dots?s.pts.map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="3" fill="${s.c}" opacity=".45"/>`).join(""):"")).join("");
   return `<svg viewBox="0 0 340 ${h}" class="wsvg" role="img" aria-label="${esc(series.map(s=>s.lab).join(", "))}">${ticks}${g}${lines}${tx}</svg>`;
 }
+/* ramowy plan km biegu do Wings for Life (9.05.2027): [poniedziałek, km, dłuższy bieg, uwaga] */
+const RAMP=[["2026-11-09",12,7.5,"przebieżki"],["2026-11-16",11,6.5,"lżejszy"],["2026-11-23",12.5,7.5,""],["2026-11-30",14,8,"3. bieg opcjonalny"],
+  ["2026-12-07",15.5,8.5,"przebieżki 6×"],["2026-12-14",17,9,""],["2026-12-21",13,7,"lżejszy · Święta"],["2026-12-28",18,10,""],
+  ["2027-01-04",20,10.5,"start akcentu tempowego"],["2027-01-11",22,11,""],["2027-01-18",17,8,"lżejszy"],["2027-01-25",23,12,""],
+  ["2027-02-01",25,13,""],["2027-02-08",27,14,""],["2027-02-15",21,10,"lżejszy"],["2027-02-22",28,14,""],
+  ["2027-03-01",30,15,""],["2027-03-08",32,16,""],["2027-03-15",25,11,"lżejszy"],["2027-03-22",33,17,""],
+  ["2027-03-29",35,18,"najdłuższy bieg"],["2027-04-05",36,18,"szczyt"],["2027-04-12",28,12,"lżejszy"],["2027-04-19",36,16,"odcinek w tempie startowym"],
+  ["2027-04-26",28,12,"zmniejszanie"],["2027-05-03",10,0,"Wings for Life 9.05"]];
+function rampCard(){
+  const today=iso(new Date()), cur=monday(today);
+  const km=m=>CO.acts.filter(a=>RUN_T.test(a.type||"")&&(a.start_date_local||"").slice(0,10)>=m&&(a.start_date_local||"").slice(0,10)<=addDays(m,6)).reduce((x,a)=>x+(a.distance_km||0),0);
+  const lng=m=>CO.acts.filter(a=>RUN_T.test(a.type||"")&&(a.start_date_local||"").slice(0,10)>=m&&(a.start_date_local||"").slice(0,10)<=addDays(m,6)).reduce((x,a)=>Math.max(x,a.distance_km||0),0);
+  const mx=Math.max(...RAMP.map(r=>r[1]));
+  const row=r=>{const m=r[0], past=m<cur, now=m===cur, k=(past||now)?km(m):null, L=(past||now)?lng(m):0;
+    const pct=k!=null?Math.min(100,k/r[1]*100):0;
+    return `<div class="rRow${now?" now":""}${past?" past":""}">
+      <span class="rD">${dm(m)}</span>
+      <span class="rBar"><i class="rPlan" style="width:${r[1]/mx*100}%"></i>${k!=null?`<i class="rDone" style="width:${Math.min(r[1],k)/mx*100}%"></i>`:""}</span>
+      <span class="rK num">${k!=null?`<b>${nf(k,1)}</b> / `:""}${nf(r[1],r[1]%1?1:0)} km</span>
+      <span class="rN">${r[2]?"dłuższy "+nf(r[2],r[2]%1?1:0)+" km"+(L&&past?" (zrobione "+nf(L,1)+")":""):""}${r[3]?(r[2]?" · ":"")+r[3]:""}</span>
+    </div>`;};
+  const i=Math.max(0,RAMP.findIndex(r=>r[0]>=cur)), near=RAMP.slice(Math.max(0,i-1),i+4), cw=RAMP.find(r=>r[0]===cur);
+  const days=dayDiff(today,"2027-05-09");
+  return `<div class="slot">
+    <div class="slotHead"><div class="slotName">Droga do Wings for Life</div><div class="slotKcal">${days>0?"za "+days+" dni · 9.05":"9.05.2027"}</div></div>
+    ${cw?`<div class="tstats" style="margin-top:8px">
+      <div><b class="num">${nf(km(cur),1)}</b><span>km w tym tyg.</span></div>
+      <div><b class="num">${nf(cw[1],cw[1]%1?1:0)}</b><span>plan na tydzień</span></div>
+      <div><b class="num">${cw[2]?nf(cw[2],cw[2]%1?1:0):"—"}</b><span>dłuższy bieg, km</span></div></div>`:""}
+    <div class="rList">${near.map(row).join("")}</div>
+    <details class="rAll"><summary class="linkish">Cały plan (${RAMP.length} tygodni)</summary><div class="rList">${RAMP.map(row).join("")}</div></details>
+    <div class="setSub">Drogowskaz, nie sztywny plan: coach co niedzielę układa kolejny tydzień i pilnuje, żeby kilometry rosły najwyżej o 10% względem tego, co faktycznie przebiegłeś. Co 4. tydzień lżejszy.</div>
+  </div>`;
+}
 function viewCoProg(){
   const P=pace140(), xo=d=>dayDiff(PLAN_START,d);
   const roll=P.map((p,i)=>{const w=P.slice(Math.max(0,i-3),i+1);return {x:xo(p.d),y:w.reduce((a,b)=>a+b.s,0)/w.length}});
@@ -2333,6 +2381,7 @@ function viewCoProg(){
   /* realizacja planu: 4 ostatnie tygodnie */
   let pN=0,dN=0; for(let d=addDays(today,-28); d<today; d=addDays(d,1)) coDay(d).items.forEach(({ev,act})=>{ if(/^\(opcjonalnie\)/i.test(ev.name||"")&&!act) return; pN++; if(act) dN++; });
   return `
+  ${rampCard()}
   <div class="slot">
     <div class="slotHead"><div class="slotName">Tempo przy tętnie 140</div><div class="slotKcal">główna miara bazy</div></div>
     ${P.length?`<div class="tstats" style="margin-top:8px">
