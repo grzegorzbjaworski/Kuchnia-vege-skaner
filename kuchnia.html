@@ -2683,7 +2683,7 @@ async function reportCore(off,limit){
     r.total=CO.acts.filter(a=>{const d=(a.start_date_local||"").slice(0,10); return d>=mon&&d<=last&&a.type!=="Transition";}).reduce((x,a)=>x+(a.moving_time||0),0);
     const runs=CO.acts.filter(a=>RUN_T.test(a.type||"")&&(a.start_date_local||"").slice(0,10)>=mon&&(a.start_date_local||"").slice(0,10)<=last);
     const rt=runs.reduce((x,a)=>x+(a.moving_time||0),0), cad=runs.filter(a=>a.average_cadence);
-    r.run={n:runs.length, min:Math.round(rt/60), km:runs.reduce((x,a)=>x+(a.distance_km||0),0),
+    r.run={n:runs.length, min:Math.round(rt/60), km:runs.reduce((x,a)=>x+(a.distance_km||0),0), long:runs.reduce((x,a)=>Math.max(x,a.distance_km||0),0),
       spm:cad.length?Math.round(cad.reduce((x,a)=>x+a.average_cadence*2*(a.moving_time||0),0)/cad.reduce((x,a)=>x+(a.moving_time||0),0)):null,
       p140:avg(pace140().filter(p=>p.d>=mon&&p.d<=all[6]).map(p=>p.s))};
     const W=days.map(d=>CO.wel[d]).filter(Boolean), goal=settings.steps||8000, st=W.filter(w=>w.steps!=null);
@@ -2718,6 +2718,11 @@ function reportCard(){
     ${r.key&&r.key.plan?row("Kluczowe treningi",r.key.done+" / "+r.key.plan,[r.key.opt?"+"+r.key.opt+" opcjonalne":"",r.key.extra?"+"+r.key.extra+" poza planem":""].filter(Boolean).join(" · ")):""}
     ${sports?row("Czas treningu",dur(r.total),sports,dl(r.total,P.total,x=>dur(x),120,true)):""}
     ${r.run&&r.run.n?row("Bieganie",r.run.min+" min · "+nf(r.run.km,1)+" km",[r.run.spm?"kadencja "+r.run.spm+" kr/min":"",r.run.p140?"tempo przy tętnie 140: "+mmss(r.run.p140)+"/km":""].filter(Boolean).join(" · "),dl(r.run.min,P.run&&P.run.min,x=>Math.round(x)+" min",2,true)):""}
+    ${(()=>{const rp=RAMP.find(x=>x[0]===r.mon); if(!rp) return "";
+      const k=r.run?r.run.km:0, lg=r.run?r.run.long:0, pc=Math.round(k/rp[1]*100);
+      return row("Plan km · Wings for Life",nf(k,1)+" / "+nf(rp[1],rp[1]%1?1:0)+" km",
+        (rp[2]?"dłuższy bieg "+(lg?nf(lg,1)+" / ":"")+nf(rp[2],rp[2]%1?1:0)+" km":"")+(rp[3]?(rp[2]?" · ":"")+rp[3]:""),
+        `<span class="dl ${pc>=90?"up":r.days<7?"eq":"dn"}">${pc}% planu</span>`);})()}
     ${r.steps&&r.steps.n?row("Kroki średnio",Math.round(r.steps.avg).toLocaleString("pl-PL"),r.steps.ok+" z "+r.steps.n+" dni z celem "+(settings.steps||8000).toLocaleString("pl-PL"),dl(r.steps.avg,P.steps&&P.steps.avg,x=>Math.round(x).toLocaleString("pl-PL"),100)):""}
     ${r.sleep?row("Sen średnio",hm(r.sleep)+" h",r.hrv?"HRV "+Math.round(r.hrv)+" ms":"",dl(r.sleep,P.sleep,x=>Math.round(x/60)+" min",300)):""}
     ${r.food.n?row("Jedzenie średnio",Math.round(r.food.k)+" / "+Math.round(r.food.goal)+" kcal","białko "+Math.round(r.food.b)+" / "+settings.protein+" g · "+r.food.n+" "+(r.food.n===1?"dzień":"dni")+" z wpisami",P.food&&P.food.n?dl(r.food.b,P.food.b,x=>Math.round(x)+" g białka",3):""):row("Jedzenie","—","brak wpisów")}
