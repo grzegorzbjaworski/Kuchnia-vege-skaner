@@ -428,6 +428,7 @@ input[type=date].fIn{min-width:0;width:100%;-webkit-appearance:none;appearance:n
 .qPre .chip .num{color:var(--ink);font-weight:600;margin-left:3px}
 .mealPrev{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:14px;background:var(--line-soft)}
 .addRow+.addRow{margin-top:8px}
+.qEst{margin-top:8px;width:100%}
 .addRow .add.alt{background:var(--surface);color:var(--muted);font-weight:600}
 .rated{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--green-soft);border-radius:12px;padding:10px 12px}
 .rated b{display:block;font-size:15px}
@@ -1530,7 +1531,8 @@ function mealSheet(title){
 function quickForm(v){
   v=v||{};
   return `<label class="fLab" for="qN">Nazwa</label>
-    <input class="fIn" id="qN" value="${esc(v.n||"")}" placeholder="np. Pizza margherita">
+    <input class="fIn" id="qN" value="${esc(v.n||"")}" placeholder="np. garść orzechów i 2 kostki czekolady 70%">
+    ${CO.sample?`<button class="add alt qEst" id="qEst" type="button">✨ Oszacuj kalorie i makro z opisu</button><div class="setSub" id="qEstOut" role="status"></div>`:""}
     <div class="fGrid four">
       <div><label class="fLab" for="qK">kcal</label><input class="fIn" id="qK" inputmode="numeric" value="${v.k??""}"></div>
       <div><label class="fLab" for="qB">Białko</label><input class="fIn" id="qB" inputmode="numeric" value="${v.b??""}"></div>
@@ -1538,6 +1540,22 @@ function quickForm(v){
       <div><label class="fLab" for="qW">Węglow.</label><input class="fIn" id="qW" inputmode="numeric" value="${v.w??""}"></div>
     </div>
     <div class="setSub" style="margin-top:6px">Makro w gramach, opcjonalnie. W restauracji doliczaj ok. 20% na oliwę i sosy.</div>`;
+}
+/* szacunek Claude z opisu: wypełnia kcal i makro, które można jeszcze poprawić */
+async function quickEstimate(){
+  const n=document.getElementById("qN"), out=document.getElementById("qEstOut"), btn=document.getElementById("qEst");
+  const txt=(n.value||"").trim(); if(!txt){ out.textContent="Najpierw opisz, co zjadłeś, np. „garść orzechów (30 g) i 2 kostki czekolady 70%”."; n.focus(); return; }
+  btn.disabled=true; out.textContent="Szacuję…";
+  try{
+    const r=await CO.sample.json(`Oszacuj wartości odżywcze tego, co zjadła jedna osoba (dorosły mężczyzna, porcje typowe dla Polski/Austrii, jeśli nie podano gramatury). Opis: "${txt.slice(0,400)}".
+Zwróć wyłącznie JSON: {"nazwa": krótka nazwa po polsku, "kcal": liczba, "bialko_g": liczba, "tluszcz_g": liczba, "wegle_g": liczba, "zalozenia": jedno krótkie zdanie po polsku, jakie porcje przyjąłeś}.`,{cache:false});
+    const num=x=>Math.max(0,Math.round(+x||0));
+    if(!r||!num(r.kcal)) throw new Error("brak");
+    document.getElementById("qK").value=num(r.kcal); document.getElementById("qB").value=num(r.bialko_g);
+    document.getElementById("qT").value=num(r.tluszcz_g); document.getElementById("qW").value=num(r.wegle_g);
+    out.innerHTML=`<b>Szacunek Claude.</b> ${esc(String(r.zalozenia||"").slice(0,200))} Popraw liczby, jeśli znasz dokładniejsze.`;
+  }catch(e){ out.textContent=e&&e.code==="not_granted"?"Szacowanie potrzebuje Twojej zgody na użycie Claude w tej aplikacji.":"Nie udało się oszacować — spróbuj opisać dokładniej albo wpisz liczby ręcznie."; }
+  btn.disabled=false;
 }
 function quickFoot(slot){
   shFoot.innerHTML=`<button class="cta" id="qSave">Dodaj do: ${SLOTMAP[slot]}</button>`;
@@ -1558,6 +1576,7 @@ function openQuick(slot){
     ${quickForm()}`;
   shBody.querySelectorAll("[data-qpre]").forEach(b=>b.onclick=()=>{ const q=QUICK[+b.dataset.qpre];
     [["qN",q[0]],["qK",q[1]],["qB",q[2]],["qT",q[3]],["qW",q[4]]].forEach(([id,v])=>document.getElementById(id).value=v); });
+  const qe=document.getElementById("qEst"); if(qe) qe.onclick=quickEstimate;
   quickFoot(slot);
 }
 /* kilka zdjęć jednego posiłku (np. przystawka, danie, deser) → osobne pozycje do zatwierdzenia */
